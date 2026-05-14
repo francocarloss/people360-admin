@@ -424,16 +424,18 @@ async function eliminarCapsula(id){
 }
 
 // Seleccion de personal
+const SELECCION_WEBHOOK_DEFAULT='http://localhost:5678/webhook/people360-seleccion';
+
 function selectedConvocatoria(){
   return state.convocatorias.find(c=>String(c.id)===String(state.convocatoriaActual))||null;
 }
 
 function seleccionWebhook(){
-  return document.getElementById('sel-webhook')?.value.trim() || localStorage.getItem('people360-seleccion-webhook') || '';
+  return document.getElementById('sel-webhook')?.value.trim() || localStorage.getItem('people360-seleccion-webhook') || SELECCION_WEBHOOK_DEFAULT;
 }
 
 async function cargarSeleccion(){
-  const webhook=localStorage.getItem('people360-seleccion-webhook')||'';
+  const webhook=localStorage.getItem('people360-seleccion-webhook')||SELECCION_WEBHOOK_DEFAULT;
   const webhookInput=document.getElementById('sel-webhook');
   if(webhookInput&&!webhookInput.value)webhookInput.value=webhook;
 

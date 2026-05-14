@@ -228,7 +228,7 @@
           <div class="panel-head">
             <div>
               <h2>Convocatorias y análisis de candidatos</h2>
-              <p class="hint">Carga CVs en PDF o Word, define las condiciones del puesto y envía el proceso a n8n para análisis con Claude.</p>
+              <p class="hint">Carga CVs en PDF o Word, define las condiciones del puesto y envia el proceso a n8n para analisis con OpenAI.</p>
             </div>
             <button onclick="cargarSeleccion()">Actualizar</button>
           </div>
@@ -253,7 +253,7 @@
           </label>
           <div class="form-grid seleccion-grid">
             <label>Webhook n8n
-              <input id="sel-webhook" placeholder="https://tu-n8n/webhook/people360-seleccion">
+              <input id="sel-webhook" placeholder="http://localhost:5678/webhook/people360-seleccion">
             </label>
             <label>CVs PDF o Word
               <input id="sel-files" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
