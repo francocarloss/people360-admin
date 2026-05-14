@@ -1,0 +1,286 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>People 360 | Consola RRHH</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="login" class="login">
+    <section class="login-panel">
+      <div class="brand-logo" aria-label="People 360">PEOPLE <span>360</span></div>
+      <h1>Consola RRHH</h1>
+      <input id="login-email" type="email" placeholder="Correo administrador" value="admin@people360.com">
+      <input id="login-pass" type="password" placeholder="Contraseña">
+      <button onclick="loginAdmin()">Ingresar</button>
+      <p id="login-msg"></p>
+    </section>
+  </main>
+
+  <main id="console" class="console hidden">
+    <aside>
+      <div class="brand-logo" aria-label="People 360">PEOPLE <span>360</span></div>
+      <button class="nav active" data-tab="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+      <button class="nav" data-tab="empleados" onclick="showTab('empleados')">Empleados</button>
+      <button class="nav" data-tab="asistencia" onclick="showTab('asistencia')">Asistencia</button>
+      <button class="nav" data-tab="ubicaciones" onclick="showTab('ubicaciones')">Ubicaciones</button>
+      <button class="nav" data-tab="cápsulas" onclick="showTab('cápsulas')">Cápsulas</button>
+      <button class="nav" data-tab="solicitudes" onclick="showTab('solicitudes')">Solicitudes</button>
+      <button class="nav" data-tab="notificaciones" onclick="showTab('notificaciones')">Notificaciones</button>
+      <button class="nav" data-tab="reportes" onclick="showTab('reportes')">Reportes</button>
+      <button class="nav" data-tab="perfiles" onclick="showTab('perfiles')">Perfiles</button>
+      <button class="ghost" onclick="logout()">Salir</button>
+    </aside>
+
+    <section class="content">
+      <header>
+        <div>
+          <span>People 360</span>
+          <h1 id="page-title">Dashboard</h1>
+        </div>
+        <button onclick="refreshAll()">Actualizar</button>
+      </header>
+
+      <section id="dashboard" class="tab active">
+        <div class="metrics">
+          <article><span>Empleados</span><strong id="m-empleados">0</strong></article>
+          <article><span>Marcaron hoy</span><strong id="m-marcaron">0</strong></article>
+          <article><span>En horario</span><strong id="m-correctos">0</strong></article>
+          <article><span>Sin uso app</span><strong id="m-sinuso">0</strong></article>
+          <article><span>Solicitudes pendientes</span><strong id="m-solicitudes">0</strong></article>
+        </div>
+        <div class="grid charts-grid">
+          <article class="panel"><h2>Marcaje en horario</h2><canvas id="chart-puntualidad"></canvas></article>
+          <article class="panel"><h2>Uso de app</h2><canvas id="chart-uso"></canvas></article>
+          <article class="panel"><h2>Solicitudes por estado</h2><canvas id="chart-solicitudes"></canvas></article>
+        </div>
+      </section>
+
+      <section id="empleados" class="tab">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Crear / editar usuario</h2>
+            <button class="secondary" onclick="nuevoEmpleado()">Nuevo usuario</button>
+          </div>
+          <div class="form-grid">
+            <label>Nombre completo <input id="emp-nombre" placeholder="Nombre del empleado"></label>
+            <label>Correo de acceso <input id="emp-email" type="email" placeholder="correo@empresa.com"></label>
+            <label>Contraseña <input id="emp-password" type="password" placeholder="Solo si deseas crear/cambiar"></label>
+            <label>Rol
+              <select id="emp-rol">
+                <option value="empleado">Empleado</option>
+                <option value="jefe">Jefe</option>
+                <option value="rrhh">RRHH</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label>Empresa <input id="emp-empresa" placeholder="Empresa"></label>
+            <label>Área / Departamento <input id="emp-departamento" placeholder="Área"></label>
+            <label>Puesto <input id="emp-puesto" placeholder="Puesto"></label>
+            <label>Teléfono <input id="emp-telefono" placeholder="Teléfono"></label>
+            <label>Fecha ingreso <input id="emp-fecha-ingreso" type="date"></label>
+            <label>Días vacaciones <input id="emp-vacaciones" type="number" step="0.5" min="0" value="15"></label>
+            <label>Jefe inmediato <input id="emp-jefe-nombre" placeholder="Nombre del jefe"></label>
+            <label>Correo notificación vacaciones <input id="emp-jefe-email" type="email" placeholder="correo del jefe"></label>
+          </div>
+          <input id="emp-id" type="hidden">
+          <div class="actions">
+            <button onclick="guardarEmpleado()">Guardar usuario</button>
+            <button class="secondary" onclick="nuevoEmpleado()">Limpiar</button>
+          </div>
+          <p class="hint">El correo de notificación de vacaciones es el destinatario que recibirá las solicitudes para aprobar o rechazar.</p>
+        </article>
+        <article class="panel">
+          <h2>Carga masiva de empleados</h2>
+          <p class="hint">CSV con columnas: email, password, nombre_completo, empresa, departamento, puesto, telefono, rol, fecha_ingreso, dias_vacaciones_total, jefe_nombre, jefe_email.</p>
+          <div class="actions">
+            <input id="bulk-file" type="file" accept=".csv">
+            <button onclick="procesarCargaMasiva()">Cargar empleados</button>
+            <button class="secondary" onclick="descargarPlantilla()">Plantilla CSV</button>
+          </div>
+          <pre id="bulk-result"></pre>
+        </article>
+        <article class="panel">
+          <h2>Directorio</h2>
+          <div class="table-wrap"><table id="tabla-empleados"></table></div>
+        </article>
+      </section>
+
+      <section id="asistencia" class="tab">
+        <article class="panel">
+          <h2>Configuración de horario</h2>
+          <div class="filters">
+            <label>Desde <input id="fecha-desde" type="date"></label>
+            <label>Hasta <input id="fecha-hasta" type="date"></label>
+            <label>Inicio <input id="hora-inicio" type="time" value="08:00"></label>
+            <label>Fin <input id="hora-fin" type="time" value="17:00"></label>
+            <button onclick="refreshAll()">Aplicar</button>
+          </div>
+        </article>
+        <div class="grid">
+          <article class="panel"><h2>Detalle diario de marcajes</h2><div class="table-wrap"><table id="tabla-detalle-marcajes"></table></div></article>
+          <article class="panel"><h2>Fuera de horario</h2><div class="table-wrap"><table id="tabla-fuera"></table></div></article>
+          <article class="panel"><h2>No utilizan la app</h2><div class="table-wrap"><table id="tabla-sinuso"></table></div></article>
+        </div>
+      </section>
+
+      <section id="ubicaciones" class="tab">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Ubicaciones de marcaje</h2>
+              <p class="hint">Admin y RRHH pueden crear puntos autorizados para que los empleados marquen entrada, almuerzo y salida.</p>
+            </div>
+            <button onclick="cargarUbicaciones()">Actualizar</button>
+          </div>
+          <div class="form-grid location-grid">
+            <label>Nombre <input id="ubi-nombre" placeholder="Ej: Oficina Central"></label>
+            <label>Latitud <input id="ubi-lat" type="number" step="any" placeholder="14.610000"></label>
+            <label>Longitud <input id="ubi-lng" type="number" step="any" placeholder="-90.516000"></label>
+            <label>Radio metros <input id="ubi-radio" type="number" min="10" value="50"></label>
+          </div>
+          <div class="actions">
+            <button class="secondary" onclick="usarUbicacionActualConsola()">Usar mi ubicacion actual</button>
+            <button onclick="guardarUbicacion()">Agregar ubicacion</button>
+          </div>
+          <p id="ubi-status" class="hint">Puedes capturar la ubicacion actual del navegador o ingresar coordenadas manualmente.</p>
+        </article>
+        <article class="panel">
+          <h2>Ubicaciones registradas</h2>
+          <div class="table-wrap"><table id="tabla-ubicaciones"></table></div>
+        </article>
+      </section>
+
+      <section id="cápsulas" class="tab">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Cápsulas informativas</h2>
+              <p class="hint">Publica videos de YouTube para que los empleados los vean desde la app. Puedes limitar una cápsula a un area especifica.</p>
+            </div>
+            <button onclick="cargarCápsulas()">Actualizar</button>
+          </div>
+          <input id="cap-id" type="hidden">
+          <div class="form-grid caps-grid">
+            <label>Titulo <input id="cap-titulo" placeholder="Ej: Beneficios de la semana"></label>
+            <label>Link de YouTube <input id="cap-youtube" placeholder="https://youtu.be/TV7Dj8lch4k"></label>
+            <label>Categoria <input id="cap-categoria" placeholder="RRHH"></label>
+            <label>Area destino <input id="cap-departamento" placeholder="Vacio = todos"></label>
+          </div>
+          <label class="wide-label">Descripcion
+            <textarea id="cap-descripcion" rows="4" placeholder="Resumen corto del video"></textarea>
+          </label>
+          <label class="check"><input id="cap-activa" type="checkbox" checked> Activa</label>
+          <div class="actions">
+            <button onclick="guardarCapsula()">Guardar cápsula</button>
+            <button class="secondary" onclick="limpiarCapsula()">Limpiar</button>
+          </div>
+        </article>
+        <article class="panel">
+          <h2>Videos publicados</h2>
+          <div class="table-wrap"><table id="tabla-cápsulas"></table></div>
+        </article>
+      </section>
+
+      <section id="notificaciones" class="tab">
+        <article class="panel">
+          <h2>Crear notificación</h2>
+          <p class="hint">Envía mensajes internos a la app. Los empleados los verán al tocar la campana de notificaciones.</p>
+          <div class="template-grid">
+            <button class="secondary template-btn" onclick="aplicarPlantillaNotificacion('quincena')">Depósito quincena</button>
+            <button class="secondary template-btn" onclick="aplicarPlantillaNotificacion('finmes')">Depósito fin de mes</button>
+            <button class="secondary template-btn" onclick="aplicarPlantillaNotificacion('marcajes')">Recordatorio marcajes</button>
+          </div>
+          <div class="form-grid notify-grid">
+            <label>Título <input id="notif-titulo" placeholder="Ej: Reunión general"></label>
+            <label>Enviar a
+              <select id="notif-scope" onchange="renderNotifTargets()">
+                <option value="todos">Todos los empleados</option>
+                <option value="departamento">Área específica</option>
+                <option value="usuarios">Empleados seleccionados</option>
+              </select>
+            </label>
+            <label id="notif-area-wrap" class="hidden">Área
+              <select id="notif-area"></select>
+            </label>
+            <label id="notif-users-wrap" class="hidden">Empleados
+              <select id="notif-users" multiple size="6"></select>
+            </label>
+          </div>
+          <label class="wide-label">Mensaje
+            <textarea id="notif-mensaje" rows="5" placeholder="Escribe el mensaje que recibirá el empleado en la app"></textarea>
+          </label>
+          <div class="actions">
+            <button onclick="enviarNotificacion()">Enviar notificación</button>
+            <button class="secondary" onclick="limpiarNotificacion()">Limpiar</button>
+          </div>
+          <pre id="notif-result"></pre>
+        </article>
+      </section>
+
+      <section id="solicitudes" class="tab">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Bandeja de solicitudes RRHH</h2>
+              <p class="hint">RRHH/Admin puede aprobar, rechazar o resolver vacaciones, permisos y solicitudes varias. El jefe solo autoriza vacaciones desde la app.</p>
+            </div>
+            <button onclick="cargarSolicitudesGestion()">Actualizar solicitudes</button>
+          </div>
+          <div class="filters">
+            <label>Estado
+              <select id="sol-filtro-estado" onchange="renderSolicitudesGestion()">
+                <option value="">Todos</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="aprobada">Aprobada</option>
+                <option value="rechazada">Rechazada</option>
+                <option value="resuelta">Resuelta</option>
+              </select>
+            </label>
+            <label>Tipo
+              <select id="sol-filtro-tipo" onchange="renderSolicitudesGestion()">
+                <option value="">Todas</option>
+                <option value="vacaciones">Vacaciones</option>
+                <option value="ausencias">Ausencias</option>
+                <option value="solicitudes_varias">Solicitudes varias</option>
+              </select>
+            </label>
+          </div>
+          <div class="table-wrap"><table id="tabla-solicitudes-gestion"></table></div>
+        </article>
+      </section>
+
+      <section id="reportes" class="tab">
+        <article class="panel">
+          <h2>Exportación</h2>
+          <p class="hint">Descarga un Excel con empleados, marcajes, vacaciones, ausencias y solicitudes varias.</p>
+          <button onclick="descargarExcel()">Descargar Excel</button>
+        </article>
+        <article class="panel">
+          <h2>Solicitudes</h2>
+          <div class="table-wrap"><table id="tabla-solicitudes"></table></div>
+        </article>
+      </section>
+
+      <section id="perfiles" class="tab">
+        <article class="panel">
+          <h2>Permisos por perfil</h2>
+          <p class="hint">Solo Admin debe modificar esta sección. Estos checks definen pestañas de consola y modulos visibles en la app para cada rol.</p>
+          <div id="perfil-editor"></div>
+          <div class="actions">
+            <button onclick="guardarPermisosPerfil()">Guardar permisos del rol</button>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+  <script src="admin.js"></script>
+</body>
+</html>
+
