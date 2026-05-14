@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -14,7 +14,7 @@
     <section class="login-panel">
       <div class="brand-logo" aria-label="People 360">PEOPLE <span>360</span></div>
       <h1>Consola RRHH</h1>
-      <input id="login-email" type="email" placeholder="Correo administrador" value="admin@people360.com">
+      <input id="login-email" type="email" placeholder="Correo administrador">
       <input id="login-pass" type="password" placeholder="Contraseña">
       <button onclick="loginAdmin()">Ingresar</button>
       <p id="login-msg"></p>
@@ -28,7 +28,7 @@
       <button class="nav" data-tab="empleados" onclick="showTab('empleados')">Empleados</button>
       <button class="nav" data-tab="asistencia" onclick="showTab('asistencia')">Asistencia</button>
       <button class="nav" data-tab="ubicaciones" onclick="showTab('ubicaciones')">Ubicaciones</button>
-      <button class="nav" data-tab="cápsulas" onclick="showTab('cápsulas')">Cápsulas</button>
+      <button class="nav" data-tab="capsulas" onclick="showTab('capsulas')">Cápsulas</button>
       <button class="nav" data-tab="solicitudes" onclick="showTab('solicitudes')">Solicitudes</button>
       <button class="nav" data-tab="notificaciones" onclick="showTab('notificaciones')">Notificaciones</button>
       <button class="nav" data-tab="reportes" onclick="showTab('reportes')">Reportes</button>
@@ -155,14 +155,14 @@
         </article>
       </section>
 
-      <section id="cápsulas" class="tab">
+      <section id="capsulas" class="tab">
         <article class="panel">
           <div class="panel-head">
             <div>
               <h2>Cápsulas informativas</h2>
-              <p class="hint">Publica videos de YouTube para que los empleados los vean desde la app. Puedes limitar una cápsula a un area especifica.</p>
+              <p class="hint">Publica videos de YouTube para que los empleados los vean desde la app. Puedes limitar una cápsula a un área específica.</p>
             </div>
-            <button onclick="cargarCápsulas()">Actualizar</button>
+            <button onclick="cargarCapsulas()">Actualizar</button>
           </div>
           <input id="cap-id" type="hidden">
           <div class="form-grid caps-grid">
@@ -182,7 +182,7 @@
         </article>
         <article class="panel">
           <h2>Videos publicados</h2>
-          <div class="table-wrap"><table id="tabla-cápsulas"></table></div>
+          <div class="table-wrap"><table id="tabla-capsulas"></table></div>
         </article>
       </section>
 
@@ -269,7 +269,7 @@
       <section id="perfiles" class="tab">
         <article class="panel">
           <h2>Permisos por perfil</h2>
-          <p class="hint">Solo Admin debe modificar esta sección. Estos checks definen pestañas de consola y modulos visibles en la app para cada rol.</p>
+          <p class="hint">Solo Admin debe modificar esta sección. Estos checks definen pestañas de consola y módulos visibles en la app para cada rol.</p>
           <div id="perfil-editor"></div>
           <div class="actions">
             <button onclick="guardarPermisosPerfil()">Guardar permisos del rol</button>
@@ -283,4 +283,3 @@
   <script src="admin.js"></script>
 </body>
 </html>
-

@@ -1,4 +1,4 @@
-﻿:root{
+:root{
   --bg:#f4f8fb;
   --panel:#fff;
   --ink:#111820;
@@ -86,7 +86,6 @@ pre{background:#071015;color:#dff7fb;border-radius:12px;padding:12px;overflow:au
   aside img{display:none}
   .metrics,.grid,.form-grid,.charts-grid{grid-template-columns:1fr}
 }
-
 .brand-logo{width:160px;margin:6px 0 22px;font-weight:950;letter-spacing:.04em;color:#050505;font-size:1.15rem;line-height:1;text-align:center}
 .brand-logo span{color:#20c5dc}
 .login-panel .brand-logo{margin:0 auto 14px;font-size:1.35rem}
