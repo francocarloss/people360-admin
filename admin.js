@@ -66,12 +66,17 @@ async function loginAdmin(){
   const password=document.getElementById('login-pass').value;
   const {data,error}=await sb.auth.signInWithPassword({email,password});
   if(error){msg.textContent=error.message;return}
-  state.user=data.user;
-  const {data:profile,error:profileError}=await sb.from('profiles').select('*').eq('id',data.user.id).single();
+  await enterConsole(data.user,msg);
+}
+
+async function enterConsole(user,msgEl=null){
+  state.user=user;
+  const msg=msgEl||document.getElementById('login-msg');
+  const {data:profile,error:profileError}=await sb.from('profiles').select('*').eq('id',user.id).single();
   if(profileError||!profile||!['admin','rrhh'].includes(String(profile.rol||'').toLowerCase())){
     await sb.auth.signOut();
-    msg.textContent='Este usuario no tiene permisos de consola.';
-    return;
+    if(msg)msg.textContent='Este usuario no tiene permisos de consola.';
+    return false;
   }
   state.profile=profile;
   document.getElementById('login').classList.add('hidden');
@@ -79,6 +84,8 @@ async function loginAdmin(){
   setDefaultDates();
   await cargarTiposPerfil();
   await refreshAll();
+  if(msg)msg.textContent='';
+  return true;
 }
 
 async function logout(){await sb.auth.signOut();location.reload()}
@@ -738,6 +745,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
   const {data:{session}}=await sb.auth.getSession();
   if(session){
     document.getElementById('login-email').value=session.user.email||'';
+    document.getElementById('login-msg').textContent='Restaurando sesion...';
+    await enterConsole(session.user);
   }
 });
 
