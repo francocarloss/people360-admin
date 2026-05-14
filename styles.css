@@ -58,6 +58,7 @@ textarea{width:100%;resize:vertical;min-height:120px}
 .notify-grid{grid-template-columns:2fr 1fr 1fr 2fr}
 .location-grid{grid-template-columns:2fr 1fr 1fr 1fr}
 .caps-grid{grid-template-columns:2fr 2fr 1fr 1fr}
+.seleccion-grid{grid-template-columns:2fr 2fr 1fr}
 .wide-label{display:grid;gap:6px;color:var(--muted);font-size:.78rem;font-weight:800;margin-bottom:14px}
 .template-grid{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px}
 .template-btn{font-size:.84rem}

@@ -29,6 +29,7 @@
       <button class="nav" data-tab="asistencia" onclick="showTab('asistencia')">Asistencia</button>
       <button class="nav" data-tab="ubicaciones" onclick="showTab('ubicaciones')">Ubicaciones</button>
       <button class="nav" data-tab="capsulas" onclick="showTab('capsulas')">Cápsulas</button>
+      <button class="nav" data-tab="seleccion" onclick="showTab('seleccion')">Selección</button>
       <button class="nav" data-tab="solicitudes" onclick="showTab('solicitudes')">Solicitudes</button>
       <button class="nav" data-tab="notificaciones" onclick="showTab('notificaciones')">Notificaciones</button>
       <button class="nav" data-tab="reportes" onclick="showTab('reportes')">Reportes</button>
@@ -219,6 +220,66 @@
             <button class="secondary" onclick="limpiarNotificacion()">Limpiar</button>
           </div>
           <pre id="notif-result"></pre>
+        </article>
+      </section>
+
+      <section id="seleccion" class="tab">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Convocatorias y análisis de candidatos</h2>
+              <p class="hint">Carga CVs en PDF o Word, define las condiciones del puesto y envía el proceso a n8n para análisis con Claude.</p>
+            </div>
+            <button onclick="cargarSeleccion()">Actualizar</button>
+          </div>
+          <div class="form-grid seleccion-grid">
+            <label>Convocatoria
+              <input id="sel-titulo" placeholder="Ej: Analista de RRHH">
+            </label>
+            <label>Puesto
+              <input id="sel-puesto" placeholder="Ej: Analista de compensaciones">
+            </label>
+            <label>Estado
+              <select id="sel-estado-filtro" onchange="renderSeleccion()">
+                <option value="">Todas</option>
+                <option value="abierta">Abiertas</option>
+                <option value="analizando">Analizando</option>
+                <option value="completada">Completadas</option>
+              </select>
+            </label>
+          </div>
+          <label class="wide-label">Requisitos y condiciones del puesto
+            <textarea id="sel-requisitos" rows="6" placeholder="Experiencia, estudios, habilidades, rango salarial, ubicación, modalidad, idiomas, certificaciones y criterios excluyentes."></textarea>
+          </label>
+          <div class="form-grid seleccion-grid">
+            <label>Webhook n8n
+              <input id="sel-webhook" placeholder="https://tu-n8n/webhook/people360-seleccion">
+            </label>
+            <label>CVs PDF o Word
+              <input id="sel-files" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            </label>
+          </div>
+          <div class="actions">
+            <button onclick="crearConvocatoria()">Crear convocatoria</button>
+            <button class="secondary" onclick="subirCandidatosSeleccion()">Subir CVs</button>
+            <button class="secondary" onclick="analizarConvocatoriaSeleccion()">Analizar con n8n</button>
+          </div>
+          <p class="hint">Selecciona una convocatoria en la tabla para subir candidatos o lanzar el análisis.</p>
+        </article>
+
+        <article class="panel">
+          <h2>Convocatorias</h2>
+          <div class="table-wrap"><table id="tabla-seleccion-convocatorias"></table></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Candidatos</h2>
+              <p id="sel-current" class="hint">Selecciona una convocatoria.</p>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="tabla-seleccion-candidatos"></table></div>
         </article>
       </section>
 

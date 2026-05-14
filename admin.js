@@ -2,14 +2,14 @@
 const SUPA_KEY='sb_publishable_i80iCeD0hfF3P38YlObsJg_runGr68-';
 const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 
-const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],resumen:[],sinUso:[],fuera:[],charts:{}};
+const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],convocatorias:[],candidatos:[],convocatoriaActual:null,resumen:[],sinUso:[],fuera:[],charts:{}};
 const DEFAULT_PERMISOS={
   empleado:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas'],consola:[]},
   jefe:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'],consola:[]},
-  rrhh:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','solicitudes','notificaciones','reportes']},
-  admin:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','solicitudes','notificaciones','reportes','perfiles']}
+  rrhh:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes']},
+  admin:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles']}
 };
-const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','solicitudes','notificaciones','reportes','perfiles'];
+const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles'];
 const APP_MODULOS=['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'];
 const NOTIF_TEMPLATES={
   quincena:{
@@ -99,11 +99,12 @@ function setDefaultDates(){
 function showTab(id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===id));
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
-  document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',perfiles:'Perfiles'}[id]||id;
+  document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',seleccion:'Seleccion',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',perfiles:'Perfiles'}[id]||id;
   if(id==='notificaciones')renderNotifTargets();
   if(id==='solicitudes')cargarSolicitudesGestion();
   if(id==='ubicaciones')cargarUbicaciones();
   if(id==='capsulas')cargarCapsulas();
+  if(id==='seleccion')cargarSeleccion();
   if(id==='perfiles')renderPerfilEditor();
 }
 
@@ -208,6 +209,7 @@ function renderAll(){
   renderEmpleados();
   renderNotifTargets();
   renderUbicaciones();
+  renderSeleccion();
   renderTables();
   renderCharts(correctos,marcaron-correctos,state.sinUso.length,marcaron);
   applyConsolePermissions();
@@ -419,6 +421,172 @@ async function eliminarCapsula(id){
   if(error){toast(error.message);return}
   toast('Capsula eliminada');
   await cargarCapsulas();
+}
+
+// Seleccion de personal
+function selectedConvocatoria(){
+  return state.convocatorias.find(c=>String(c.id)===String(state.convocatoriaActual))||null;
+}
+
+function seleccionWebhook(){
+  return document.getElementById('sel-webhook')?.value.trim() || localStorage.getItem('people360-seleccion-webhook') || '';
+}
+
+async function cargarSeleccion(){
+  const webhook=localStorage.getItem('people360-seleccion-webhook')||'';
+  const webhookInput=document.getElementById('sel-webhook');
+  if(webhookInput&&!webhookInput.value)webhookInput.value=webhook;
+
+  const [convRes,candRes]=await Promise.all([
+    sb.from('seleccion_convocatorias').select('*').order('created_at',{ascending:false}),
+    sb.from('seleccion_candidatos').select('*').order('created_at',{ascending:false})
+  ]);
+  if(convRes.error){toast(convRes.error.message);return}
+  if(candRes.error){toast(candRes.error.message);return}
+  state.convocatorias=convRes.data||[];
+  state.candidatos=candRes.data||[];
+  if(state.convocatoriaActual&&!state.convocatorias.some(c=>String(c.id)===String(state.convocatoriaActual))){
+    state.convocatoriaActual=null;
+  }
+  renderSeleccion();
+}
+
+function renderSeleccion(){
+  const convTable=document.getElementById('tabla-seleccion-convocatorias');
+  const candTable=document.getElementById('tabla-seleccion-candidatos');
+  if(!convTable||!candTable)return;
+
+  const filtro=document.getElementById('sel-estado-filtro')?.value||'';
+  const convocatorias=state.convocatorias.filter(c=>!filtro||c.estado===filtro);
+  const convRows=convocatorias.map(c=>{
+    const total=state.candidatos.filter(x=>x.convocatoria_id===c.id).length;
+    const selected=String(state.convocatoriaActual)===String(c.id)?'ok':'';
+    return `<tr>
+      <td><button class="mini secondary" onclick="seleccionarConvocatoria('${c.id}')">Seleccionar</button></td>
+      <td class="${selected}">${escapeHtml(c.titulo)}</td>
+      <td>${escapeHtml(c.puesto||'')}</td>
+      <td>${escapeHtml(c.estado||'abierta')}</td>
+      <td>${total}</td>
+      <td>${escapeHtml(c.recomendado_nombre||'-')}</td>
+      <td>${new Date(c.created_at).toLocaleDateString('es-GT')}</td>
+    </tr>`;
+  });
+  convTable.innerHTML=table(['Accion','Convocatoria','Puesto','Estado','CVs','Recomendado','Creada'],convRows);
+
+  const actual=selectedConvocatoria();
+  const current=document.getElementById('sel-current');
+  if(current)current.textContent=actual?`Convocatoria seleccionada: ${actual.titulo}`:'Selecciona una convocatoria.';
+
+  const candidatos=actual?state.candidatos.filter(c=>c.convocatoria_id===actual.id):[];
+  const candRows=candidatos.map(c=>{
+    const score=c.puntaje_total!==null&&c.puntaje_total!==undefined?`${c.puntaje_total}/100`:'-';
+    const cumple=c.cumple_requisitos===true?'Si':c.cumple_requisitos===false?'No':'-';
+    return `<tr>
+      <td>${escapeHtml(c.nombre_candidato||c.nombre_archivo||'Candidato')}</td>
+      <td>${escapeHtml(c.nombre_archivo||'')}</td>
+      <td>${escapeHtml(c.estado||'pendiente')}</td>
+      <td>${score}</td>
+      <td>${cumple}</td>
+      <td>${c.recomendado?'Si':'No'}</td>
+      <td>${escapeHtml(c.resumen||'-')}</td>
+      <td>${escapeHtml(c.riesgos||'-')}</td>
+    </tr>`;
+  });
+  candTable.innerHTML=table(['Candidato','Archivo','Estado','Puntaje','Cumple','Recomendado','Resumen','Alertas'],candRows);
+}
+
+function seleccionarConvocatoria(id){
+  state.convocatoriaActual=id;
+  const c=selectedConvocatoria();
+  if(c){
+    document.getElementById('sel-titulo').value=c.titulo||'';
+    document.getElementById('sel-puesto').value=c.puesto||'';
+    document.getElementById('sel-requisitos').value=c.requisitos||'';
+  }
+  renderSeleccion();
+}
+
+async function crearConvocatoria(){
+  const titulo=document.getElementById('sel-titulo').value.trim();
+  const puesto=document.getElementById('sel-puesto').value.trim();
+  const requisitos=document.getElementById('sel-requisitos').value.trim();
+  const webhook=seleccionWebhook();
+  if(webhook)localStorage.setItem('people360-seleccion-webhook',webhook);
+  if(!titulo){toast('Ingresa el nombre de la convocatoria');return}
+  if(!requisitos){toast('Ingresa los requisitos del puesto');return}
+  const row={titulo,puesto,requisitos,estado:'abierta',created_by:state.user.id,updated_at:new Date().toISOString()};
+  const {data,error}=await sb.from('seleccion_convocatorias').insert(row).select('*').single();
+  if(error){toast(error.message);return}
+  state.convocatoriaActual=data.id;
+  toast('Convocatoria creada');
+  await cargarSeleccion();
+}
+
+async function subirCandidatosSeleccion(){
+  const actual=selectedConvocatoria();
+  if(!actual){toast('Selecciona una convocatoria');return}
+  const files=[...document.getElementById('sel-files').files];
+  if(!files.length){toast('Selecciona CVs en PDF o Word');return}
+  const allowed=['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  const rows=[];
+  for(const file of files){
+    if(!allowed.includes(file.type)&&!/\.(pdf|doc|docx)$/i.test(file.name)){
+      toast(`Archivo no permitido: ${file.name}`);
+      continue;
+    }
+    const safeName=file.name.replace(/[^\w.\-]+/g,'_');
+    const path=`${actual.id}/${Date.now()}-${safeName}`;
+    const up=await sb.storage.from('seleccion-cv').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+    if(up.error){toast(up.error.message);continue}
+    rows.push({
+      convocatoria_id:actual.id,
+      nombre_archivo:file.name,
+      storage_bucket:'seleccion-cv',
+      storage_path:path,
+      mime_type:file.type||'application/octet-stream',
+      estado:'pendiente',
+      created_by:state.user.id
+    });
+  }
+  if(!rows.length)return;
+  const {error}=await sb.from('seleccion_candidatos').insert(rows);
+  if(error){toast(error.message);return}
+  document.getElementById('sel-files').value='';
+  toast(`${rows.length} CV(s) cargado(s)`);
+  await cargarSeleccion();
+}
+
+async function analizarConvocatoriaSeleccion(){
+  const actual=selectedConvocatoria();
+  if(!actual){toast('Selecciona una convocatoria');return}
+  const webhook=seleccionWebhook();
+  if(!webhook){toast('Configura el webhook de n8n');return}
+  localStorage.setItem('people360-seleccion-webhook',webhook);
+  const candidatos=state.candidatos.filter(c=>c.convocatoria_id===actual.id);
+  if(!candidatos.length){toast('Carga al menos un CV');return}
+  await sb.from('seleccion_convocatorias').update({estado:'analizando',updated_at:new Date().toISOString()}).eq('id',actual.id);
+  try{
+    const res=await fetch(webhook,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        source:'people360',
+        supabase_url:SUPA_URL,
+        convocatoria_id:actual.id,
+        titulo:actual.titulo,
+        puesto:actual.puesto,
+        requisitos:actual.requisitos,
+        candidatos:candidatos.map(c=>({id:c.id,nombre_archivo:c.nombre_archivo,bucket:c.storage_bucket,path:c.storage_path,mime_type:c.mime_type}))
+      })
+    });
+    const text=await res.text();
+    if(!res.ok)throw new Error(text||`Error ${res.status} en n8n`);
+    toast('Analisis enviado a n8n');
+  }catch(error){
+    await sb.from('seleccion_convocatorias').update({estado:'abierta',updated_at:new Date().toISOString()}).eq('id',actual.id);
+    toast(error.message);
+  }
+  await cargarSeleccion();
 }
 
 function nuevoEmpleado(){
@@ -647,7 +815,7 @@ function applyConsolePermissions(){
   const permisos=state.profile?.permisos?.consola || DEFAULT_PERMISOS[rol]?.consola || [];
   document.querySelectorAll('.nav[data-tab]').forEach(btn=>{
     const tab=btn.dataset.tab;
-    const allowed=rol==='admin'||(['admin','rrhh'].includes(rol)&&['ubicaciones','capsulas'].includes(tab))||permisos.includes(tab);
+    const allowed=rol==='admin'||(['admin','rrhh'].includes(rol)&&['ubicaciones','capsulas','seleccion'].includes(tab))||permisos.includes(tab);
     btn.classList.toggle('hidden',!allowed);
   });
 }
