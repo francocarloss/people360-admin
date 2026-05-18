@@ -1572,7 +1572,7 @@ async function guardarConfigEmpresa(){
 }
 
 // ── LINKEDIN CANDIDATE SEARCH ────────────────────────────────
-const LINKEDIN_WEBHOOK_DEFAULT='https://strategy-associated-outsourcing-respiratory.trycloudflare.com/webhook/people360-linkedin-search';
+const LINKEDIN_WEBHOOK_DEFAULT='http://localhost:5678/webhook/people360-linkedin-search';
 let liPollInterval=null;
 
 function linkedinWebhookUrl(){
