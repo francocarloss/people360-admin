@@ -2,15 +2,16 @@
 const SUPA_KEY='sb_publishable_i80iCeD0hfF3P38YlObsJg_runGr68-';
 const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 
-const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],convocatorias:[],candidatos:[],convocatoriaActual:null,resumen:[],sinUso:[],fuera:[],charts:{}};
+const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],convocatorias:[],candidatos:[],convocatoriaActual:null,resumen:[],sinUso:[],fuera:[],charts:{},encuestas:[]};
+let encPreguntas=[];
 const DEFAULT_PERMISOS={
-  empleado:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas'],consola:[]},
-  jefe:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'],consola:[]},
-  rrhh:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes']},
-  admin:{app:['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles']}
+  empleado:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','mis_solicitudes','encuestas'],consola:[]},
+  jefe:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'],consola:[]},
+  rrhh:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','mis_solicitudes','encuestas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas']},
+  admin:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles','encuestas','configuracion']}
 };
-const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles'];
-const APP_MODULOS=['home','checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones'];
+const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas','configuracion','perfiles'];
+const APP_MODULOS=['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'];
 const NOTIF_TEMPLATES={
   quincena:{
     titulo:'Deposito de quincena realizado',
@@ -61,7 +62,7 @@ async function callFunction(name, body){
 
 async function loginAdmin(){
   const msg=document.getElementById('login-msg');
-  msg.textContent='Validando...';
+  msg.textContent='Iniciando sesión...';
   const email=document.getElementById('login-email').value.trim();
   const password=document.getElementById('login-pass').value;
   const {data,error}=await sb.auth.signInWithPassword({email,password});
@@ -69,7 +70,7 @@ async function loginAdmin(){
   await enterConsole(data.user,msg);
 }
 
-async function enterConsole(user,msgEl=null){
+async function enterConsole(user,msgEl=null,initialTab=null){
   state.user=user;
   const msg=msgEl||document.getElementById('login-msg');
   const {data:profile,error:profileError}=await sb.from('profiles').select('*').eq('id',user.id).single();
@@ -81,6 +82,7 @@ async function enterConsole(user,msgEl=null){
   state.profile=profile;
   document.getElementById('login').classList.add('hidden');
   document.getElementById('console').classList.remove('hidden');
+  if(initialTab)showTab(initialTab);
   setDefaultDates();
   await cargarTiposPerfil();
   await refreshAll();
@@ -97,27 +99,32 @@ function setDefaultDates(){
 }
 
 function showTab(id){
+  sessionStorage.setItem('people360-tab',id);
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===id));
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
-  document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',seleccion:'Seleccion',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',perfiles:'Perfiles'}[id]||id;
+  document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',seleccion:'Selección de Personal',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',encuestas:'Encuestas de Clima',configuracion:'Configuración de Empresa',perfiles:'Perfiles',linkedin:'Búsqueda LinkedIn'}[id]||id;
   if(id==='notificaciones')renderNotifTargets();
   if(id==='solicitudes')cargarSolicitudesGestion();
   if(id==='ubicaciones')cargarUbicaciones();
   if(id==='capsulas')cargarCapsulas();
   if(id==='seleccion')cargarSeleccion();
   if(id==='perfiles')renderPerfilEditor();
+  if(id==='encuestas')cargarEncuestas();
+  if(id==='configuracion')cargarConfigEmpresa();
+  if(id==='linkedin')mostrarTabLinkedIn();
 }
 
 async function refreshAll(){
   const desde=document.getElementById('fecha-desde').value||todayISO();
   const hasta=document.getElementById('fecha-hasta').value||desde;
-  const [empleadosRes,marcajesRes,vacacionesRes,ausenciasRes,solicitudesRes,ubicacionesRes]=await Promise.all([
+  const [empleadosRes,marcajesRes,vacacionesRes,ausenciasRes,solicitudesRes,ubicacionesRes,convocatoriasRes]=await Promise.all([
     sb.from('profiles').select('*').order('nombre_completo',{ascending:true}),
     sb.from('marcajes').select('*').gte('created_at',`${desde}T00:00:00`).lte('created_at',`${hasta}T23:59:59`).order('created_at',{ascending:true}),
     sb.from('vacaciones').select('*').gte('created_at',`${desde}T00:00:00`).lte('created_at',`${hasta}T23:59:59`).order('created_at',{ascending:false}),
     sb.from('ausencias').select('*').gte('created_at',`${desde}T00:00:00`).lte('created_at',`${hasta}T23:59:59`).order('created_at',{ascending:false}),
     sb.from('solicitudes_varias').select('*').gte('created_at',`${desde}T00:00:00`).lte('created_at',`${hasta}T23:59:59`).order('created_at',{ascending:false}),
-    sb.from('ubicaciones').select('*').order('created_at',{ascending:false})
+    sb.from('ubicaciones').select('*').order('created_at',{ascending:false}),
+    sb.from('seleccion_convocatorias').select('*').order('created_at',{ascending:false})
   ]);
   if(empleadosRes.error){toast(empleadosRes.error.message);return}
   if(marcajesRes.error){toast(marcajesRes.error.message);return}
@@ -127,6 +134,7 @@ async function refreshAll(){
   state.ausencias=ausenciasRes.data||[];
   state.solicitudes=solicitudesRes.data||[];
   state.ubicaciones=ubicacionesRes.data||[];
+  if(!convocatoriasRes.error)state.convocatorias=convocatoriasRes.data||[];
   buildAnalytics();
   buildSolicitudesReporte();
   renderAll();
@@ -198,21 +206,44 @@ function buildSolicitudesReporte(){
 }
 
 function renderAll(){
-  const marcaron=state.resumen.filter(r=>r.marcajes>0).length;
-  const correctos=state.resumen.filter(r=>r.en_horario).length;
-  document.getElementById('m-empleados').textContent=state.empleados.length;
-  document.getElementById('m-marcaron').textContent=marcaron;
-  document.getElementById('m-correctos').textContent=correctos;
-  document.getElementById('m-sinuso').textContent=state.sinUso.length;
-  const pendientes=state.solicitudesReporte.filter(s=>String(s.estado||'pendiente')==='pendiente').length;
-  document.getElementById('m-solicitudes').textContent=pendientes;
+  renderDashboard();
   renderEmpleados();
   renderNotifTargets();
   renderUbicaciones();
   renderSeleccion();
   renderTables();
-  renderCharts(correctos,marcaron-correctos,state.sinUso.length,marcaron);
   applyConsolePermissions();
+}
+
+function renderDashboard(){
+  const areaEl=document.getElementById('dash-area');
+  if(areaEl){
+    const areas=[...new Set(state.empleados.map(e=>e.departamento||'').filter(Boolean))].sort();
+    const curVal=areaEl.value;
+    areaEl.innerHTML='<option value="">Todas las áreas</option>'+areas.map(a=>`<option value="${escapeHtml(a)}"${a===curVal?' selected':''}>${escapeHtml(a)}</option>`).join('');
+  }
+  const area=areaEl?.value||'';
+  const empleados=area?state.empleados.filter(e=>(e.departamento||'')===area):state.empleados;
+  const empIds=new Set(empleados.map(e=>e.id));
+  const resumen=area?state.resumen.filter(r=>(r.departamento||'')===area):state.resumen;
+  const solicitudes=area?state.solicitudesReporte.filter(s=>(s.departamento||'')===area):state.solicitudesReporte;
+  const vacaciones=area?state.vacaciones.filter(v=>empIds.has(v.user_id)):state.vacaciones;
+  const ausencias=area?state.ausencias.filter(a=>empIds.has(a.user_id)):state.ausencias;
+  const marcaron=resumen.filter(r=>r.marcajes>0).length;
+  const correctos=resumen.filter(r=>r.en_horario).length;
+  const sinUso=resumen.filter(r=>r.marcajes===0).length;
+  const pendientes=solicitudes.filter(s=>String(s.estado||'pendiente')==='pendiente').length;
+  const vacAprobadas=vacaciones.filter(v=>v.estado==='aprobada').length;
+  const totalExtraMin=resumen.reduce((s,r)=>s+(Number(r.extra_min)||0),0);
+  document.getElementById('m-empleados').textContent=empleados.length;
+  document.getElementById('m-marcaron').textContent=marcaron;
+  document.getElementById('m-correctos').textContent=correctos;
+  document.getElementById('m-sinuso').textContent=sinUso;
+  document.getElementById('m-solicitudes').textContent=pendientes;
+  document.getElementById('m-ausencias').textContent=ausencias.length;
+  document.getElementById('m-vacaciones').textContent=vacAprobadas;
+  document.getElementById('m-extra').textContent=`${(totalExtraMin/60).toFixed(1)}h`;
+  renderCharts(correctos,marcaron-correctos,sinUso,marcaron,resumen,solicitudes,vacaciones,ausencias);
 }
 
 function table(headers,rows){
@@ -220,8 +251,8 @@ function table(headers,rows){
 }
 
 function renderEmpleados(){
-  const rows=state.empleados.map(e=>`<tr><td>${escapeHtml(e.nombre_completo)}</td><td>${escapeHtml(e.email)}</td><td>${escapeHtml(e.departamento)}</td><td>${escapeHtml(e.puesto)}</td><td>${escapeHtml(e.rol)}</td><td>${escapeHtml(e.jefe_email||'')}</td><td>${escapeHtml(e.fecha_ingreso||'')}</td><td><button class="mini secondary" onclick="editarEmpleado('${e.id}')">Editar</button></td></tr>`);
-  document.getElementById('tabla-empleados').innerHTML=table(['Nombre','Email','Area','Puesto','Rol','Correo vacaciones','Ingreso','Accion'],rows);
+  const rows=state.empleados.map(e=>`<tr><td>${escapeHtml(e.nombre_completo)}</td><td>${escapeHtml(e.email)}</td><td>${escapeHtml(e.departamento)}</td><td>${escapeHtml(e.puesto)}</td><td>${escapeHtml(e.rol)}</td><td class="${e.biometria_marcaje_requerida?'ok':'bad'}">${e.biometria_marcaje_requerida?'Requerida':'No requerida'}</td><td>${escapeHtml(e.jefe_email||'')}</td><td>${escapeHtml(e.fecha_ingreso||'')}</td><td><button class="mini secondary" onclick="editarEmpleado('${e.id}')">Editar</button></td></tr>`);
+  document.getElementById('tabla-empleados').innerHTML=table(['Nombre','Email','Area','Puesto','Rol','Biometria','Correo vacaciones','Ingreso','Accion'],rows);
 }
 
 async function cargarUbicaciones(){
@@ -424,21 +455,17 @@ async function eliminarCapsula(id){
 }
 
 // Seleccion de personal
-const SELECCION_WEBHOOK_DEFAULT='http://localhost:5678/webhook/people360-seleccion';
+const SELECCION_WEBHOOK='http://localhost:5678/webhook/people360-seleccion';
 
 function selectedConvocatoria(){
   return state.convocatorias.find(c=>String(c.id)===String(state.convocatoriaActual))||null;
 }
 
 function seleccionWebhook(){
-  return document.getElementById('sel-webhook')?.value.trim() || localStorage.getItem('people360-seleccion-webhook') || SELECCION_WEBHOOK_DEFAULT;
+  return SELECCION_WEBHOOK;
 }
 
 async function cargarSeleccion(){
-  const webhook=localStorage.getItem('people360-seleccion-webhook')||SELECCION_WEBHOOK_DEFAULT;
-  const webhookInput=document.getElementById('sel-webhook');
-  if(webhookInput&&!webhookInput.value)webhookInput.value=webhook;
-
   const [convRes,candRes]=await Promise.all([
     sb.from('seleccion_convocatorias').select('*').order('created_at',{ascending:false}),
     sb.from('seleccion_candidatos').select('*').order('created_at',{ascending:false})
@@ -462,41 +489,89 @@ function renderSeleccion(){
   const convocatorias=state.convocatorias.filter(c=>!filtro||c.estado===filtro);
   const convRows=convocatorias.map(c=>{
     const total=state.candidatos.filter(x=>x.convocatoria_id===c.id).length;
-    const selected=String(state.convocatoriaActual)===String(c.id)?'ok':'';
-    return `<tr>
-      <td><button class="mini secondary" onclick="seleccionarConvocatoria('${c.id}')">Seleccionar</button></td>
-      <td class="${selected}">${escapeHtml(c.titulo)}</td>
-      <td>${escapeHtml(c.puesto||'')}</td>
-      <td>${escapeHtml(c.estado||'abierta')}</td>
+    const isActive=String(state.convocatoriaActual)===String(c.id);
+    const dias=diasProceso(c);
+    const diasLabel=c.fecha_contratacion?`<span class="ok">${dias}d</span>`:`${dias}d`;
+    const yaContratado=!!c.contratado_nombre;
+    const estadoDisplay=yaContratado?'contratado':c.estado;
+    const acciones=[];
+    if(!yaContratado&&c.estado!=='cerrada'){
+      acciones.push(`<button class="mini sel-btn-contratar" onclick="abrirModalContratar('${c.id}')">Contratar</button>`);
+      acciones.push(`<button class="mini secondary" onclick="cerrarPlaza('${c.id}')">Cerrar</button>`);
+    }
+    if(['cerrada','completada','analizando'].includes(c.estado)&&!yaContratado){
+      acciones.push(`<button class="mini secondary" onclick="reabrirPlaza('${c.id}')">Reabrir</button>`);
+    }
+    const fechaCreada=c.created_at?new Date(c.created_at).toLocaleDateString('es-GT'):'-';
+    return `<tr class="${isActive?'row-selected':''}">
+      <td>${isActive
+        ? `<button class="mini sel-btn-active" onclick="deseleccionarConvocatoria()" title="Clic para deseleccionar">✓ Activa ✕</button>`
+        : `<button class="mini secondary" onclick="seleccionarConvocatoria('${c.id}')">Seleccionar</button>`
+      }</td>
+      <td><strong>${escapeHtml(c.titulo||'—')}</strong></td>
+      <td>${escapeHtml(c.puesto||'—')}</td>
+      <td>${estadoBadge(estadoDisplay||'abierta')}</td>
       <td>${total}</td>
       <td>${escapeHtml(c.recomendado_nombre||'-')}</td>
-      <td>${new Date(c.created_at).toLocaleDateString('es-GT')}</td>
+      <td>${yaContratado?`<strong class="ok">${escapeHtml(c.contratado_nombre)}</strong>`:'-'}</td>
+      <td>${diasLabel}</td>
+      <td>${fechaCreada}</td>
+      <td><div class="row-actions">${acciones.join('')}</div></td>
     </tr>`;
   });
-  convTable.innerHTML=table(['Accion','Convocatoria','Puesto','Estado','CVs','Recomendado','Creada'],convRows);
+  convTable.innerHTML=table(['','Plaza','Puesto','Estado','CVs','Recomendado IA','Contratado','Días','Creada','Acciones'],convRows);
 
   const actual=selectedConvocatoria();
   const current=document.getElementById('sel-current');
-  if(current)current.textContent=actual?`Convocatoria seleccionada: ${actual.titulo}`:'Selecciona una convocatoria.';
+  if(current){
+    if(actual&&actual.estado==='analizando'){
+      const total=state.candidatos.filter(c=>c.convocatoria_id===actual.id).length;
+      const analizados=state.candidatos.filter(c=>c.convocatoria_id===actual.id&&c.estado==='analizado').length;
+      current.innerHTML=`<span class="sel-active-badge sel-badge-analizando"><span class="spinner">&#8635;</span> <span id="sel-analisis-progreso">Analizando CVs... ${analizados} de ${total} completados</span></span>`;
+    } else if(actual){
+      current.innerHTML=`<span class="sel-active-badge">Subiendo CVs a: <strong>${escapeHtml(actual.titulo)}</strong>${actual.puesto?` &mdash; ${escapeHtml(actual.puesto)}`:''}</span>`;
+    } else {
+      current.innerHTML='Selecciona una plaza en la tabla para activar esta sección.';
+    }
+  }
+  const btnGuardar=document.getElementById('sel-btn-guardar');
+  if(btnGuardar)btnGuardar.textContent=actual?'Actualizar plaza':'Crear plaza';
+
+  const uploadSection=document.getElementById('sel-upload-section');
+  const noSelection=document.getElementById('sel-no-selection');
+  if(uploadSection)uploadSection.classList.toggle('hidden',!actual);
+  if(noSelection)noSelection.classList.toggle('hidden',!!actual);
 
   const candidatos=actual?state.candidatos.filter(c=>c.convocatoria_id===actual.id):[];
+  const convAnalizando=actual&&actual.estado==='analizando';
   const candRows=candidatos.map(c=>{
     const score=c.puntaje_total!==null&&c.puntaje_total!==undefined?`${c.puntaje_total}/100`:'-';
     const cumple=c.cumple_requisitos===true?'Si':c.cumple_requisitos===false?'No':'-';
+    const estadoClass=c.estado==='analizado'?'ok':c.estado==='pendiente'?'':'bad';
+    const estadoLabel=c.estado==='pendiente'&&convAnalizando
+      ?`<span class="estado-analizando"><span class="spinner">&#8635;</span> Analizando...</span>`
+      :escapeHtml(c.estado||'pendiente');
+    const recClass=c.recomendado?'ok':'';
     return `<tr>
-      <td>${escapeHtml(c.nombre_candidato||c.nombre_archivo||'Candidato')}</td>
-      <td>${escapeHtml(c.nombre_archivo||'')}</td>
-      <td>${escapeHtml(c.estado||'pendiente')}</td>
-      <td>${score}</td>
+      <td><strong>${escapeHtml(c.nombre_candidato||c.nombre_archivo||'Candidato')}</strong><br><small style="color:var(--muted);font-weight:400">${escapeHtml(c.nombre_archivo||'')}</small></td>
+      <td class="${estadoClass}">${estadoLabel}</td>
+      <td><strong>${score}</strong></td>
       <td>${cumple}</td>
-      <td>${c.recomendado?'Si':'No'}</td>
-      <td>${escapeHtml(c.resumen||'-')}</td>
-      <td>${escapeHtml(c.riesgos||'-')}</td>
+      <td class="${recClass}">${c.recomendado?'✓ Sí':'No'}</td>
+      <td><div class="row-actions">
+        ${c.estado==='analizado'?`<button class="mini" onclick="verCandidato('${c.id}')">Ver análisis</button>`:''}
+        <button class="mini secondary danger" onclick="eliminarCandidato('${c.id}')">Eliminar</button>
+      </div></td>
     </tr>`;
   });
-  candTable.innerHTML=table(['Candidato','Archivo','Estado','Puntaje','Cumple','Recomendado','Resumen','Alertas'],candRows);
+  candTable.innerHTML=table(['Candidato','Estado','Puntaje','Cumple','Recomendado','Acciones'],candRows);
 }
 
+function deseleccionarConvocatoria(){
+  state.convocatoriaActual=null;
+  ['sel-titulo','sel-puesto','sel-requisitos'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  renderSeleccion();
+}
 function seleccionarConvocatoria(id){
   state.convocatoriaActual=id;
   const c=selectedConvocatoria();
@@ -504,6 +579,7 @@ function seleccionarConvocatoria(id){
     document.getElementById('sel-titulo').value=c.titulo||'';
     document.getElementById('sel-puesto').value=c.puesto||'';
     document.getElementById('sel-requisitos').value=c.requisitos||'';
+    // Pre-llenar búsqueda LinkedIn con el puesto
   }
   renderSeleccion();
 }
@@ -512,15 +588,156 @@ async function crearConvocatoria(){
   const titulo=document.getElementById('sel-titulo').value.trim();
   const puesto=document.getElementById('sel-puesto').value.trim();
   const requisitos=document.getElementById('sel-requisitos').value.trim();
-  const webhook=seleccionWebhook();
-  if(webhook)localStorage.setItem('people360-seleccion-webhook',webhook);
   if(!titulo){toast('Ingresa el nombre de la convocatoria');return}
   if(!requisitos){toast('Ingresa los requisitos del puesto');return}
-  const row={titulo,puesto,requisitos,estado:'abierta',created_by:state.user.id,updated_at:new Date().toISOString()};
-  const {data,error}=await sb.from('seleccion_convocatorias').insert(row).select('*').single();
+  if(state.convocatoriaActual){
+    const {error}=await sb.from('seleccion_convocatorias').update({titulo,puesto,requisitos,updated_at:new Date().toISOString()}).eq('id',state.convocatoriaActual);
+    if(error){toast(error.message);return}
+    toast('Plaza actualizada');
+  } else {
+    const row={titulo,puesto,requisitos,estado:'abierta',created_by:state.user.id,updated_at:new Date().toISOString()};
+    const {data,error}=await sb.from('seleccion_convocatorias').insert(row).select('*').single();
+    if(error){toast(error.message);return}
+    state.convocatoriaActual=data.id;
+    toast('Plaza creada');
+  }
+  await cargarSeleccion();
+}
+
+function limpiarFormSeleccion(){
+  ['sel-titulo','sel-puesto','sel-requisitos'].forEach(id=>document.getElementById(id).value='');
+  state.convocatoriaActual=null;
+  renderSeleccion();
+}
+
+function diasProceso(c){
+  const inicio=c.created_at?new Date(c.created_at):null;
+  if(!inicio||isNaN(inicio))return 0;
+  const fin=c.fecha_contratacion?new Date(c.fecha_contratacion):new Date();
+  return Math.max(0,Math.floor((fin-inicio)/(1000*60*60*24)));
+}
+
+function estadoBadge(estado){
+  const map={
+    abierta:{cls:'badge-blue',label:'Abierta'},
+    analizando:{cls:'badge-orange',label:'Analizando'},
+    completada:{cls:'badge-green',label:'Completada'},
+    contratado:{cls:'badge-teal',label:'Contratado ✓'},
+    cerrada:{cls:'badge-gray',label:'Cerrada'},
+    error:{cls:'badge-red',label:'Error'}
+  };
+  const e=map[estado]||{cls:'badge-gray',label:escapeHtml(estado)};
+  return `<span class="status-badge ${e.cls}">${e.label}</span>`;
+}
+
+function abrirModalContratar(convocatoriaId){
+  const candidatos=state.candidatos.filter(c=>c.convocatoria_id===convocatoriaId);
+  document.getElementById('modal-conv-id').value=convocatoriaId;
+  const select=document.getElementById('modal-candidato-select');
+  select.innerHTML=candidatos.map(c=>`<option value="${c.id}">${escapeHtml(c.nombre_candidato||c.nombre_archivo||'Candidato')}</option>`).join('');
+  select.innerHTML+=`<option value="">— Candidato externo / no registrado —</option>`;
+  const showExternal=!candidatos.length||select.value==='';
+  document.getElementById('modal-nombre-externo-wrap').classList.toggle('hidden',!showExternal);
+  document.getElementById('modal-nombre-externo').value='';
+  document.getElementById('modal-fecha-contratacion').value=new Date().toISOString().slice(0,10);
+  document.getElementById('modal-contratar').classList.remove('hidden');
+}
+
+function cerrarModalContratar(){
+  document.getElementById('modal-contratar').classList.add('hidden');
+}
+
+function onModalCandidatoChange(){
+  const val=document.getElementById('modal-candidato-select').value;
+  document.getElementById('modal-nombre-externo-wrap').classList.toggle('hidden',!!val);
+}
+
+async function confirmarContratacion(){
+  const convId=document.getElementById('modal-conv-id').value;
+  const candidatoId=document.getElementById('modal-candidato-select').value||null;
+  const fecha=document.getElementById('modal-fecha-contratacion').value;
+  if(!fecha){toast('Selecciona la fecha de contratación');return}
+  let nombre='';
+  if(candidatoId){
+    const c=state.candidatos.find(x=>x.id===candidatoId);
+    nombre=c?(c.nombre_candidato||c.nombre_archivo||''):'';
+  } else {
+    nombre=document.getElementById('modal-nombre-externo').value.trim();
+    if(!nombre){toast('Ingresa el nombre del candidato contratado');return}
+  }
+  const {error}=await sb.from('seleccion_convocatorias').update({
+    estado:'cerrada',
+    contratado_candidato_id:candidatoId,
+    contratado_nombre:nombre,
+    fecha_contratacion:new Date(fecha).toISOString(),
+    updated_at:new Date().toISOString()
+  }).eq('id',convId);
   if(error){toast(error.message);return}
-  state.convocatoriaActual=data.id;
-  toast('Convocatoria creada');
+  toast(`Contratación registrada: ${nombre}`);
+  cerrarModalContratar();
+  await cargarSeleccion();
+}
+
+function verCandidato(id){
+  const c=state.candidatos.find(x=>x.id===id);
+  if(!c)return;
+  document.getElementById('modal-cand-nombre').textContent=c.nombre_candidato||c.nombre_archivo||'Candidato';
+  const scoreBadge=document.getElementById('modal-cand-score');
+  scoreBadge.textContent=`${c.puntaje_total??'-'}/100`;
+  scoreBadge.className='cand-score-badge cand-score-'+(c.puntaje_total>=70?'alto':c.puntaje_total>=40?'medio':'bajo');
+  document.getElementById('modal-cand-rec').className='status-badge '+(c.recomendado?'badge-green':'badge-gray');
+  document.getElementById('modal-cand-rec').textContent=c.recomendado?'✓ Recomendado':'No recomendado';
+  document.getElementById('modal-cand-cumple').className='status-badge '+(c.cumple_requisitos?'badge-green':'badge-red');
+  document.getElementById('modal-cand-cumple').textContent=c.cumple_requisitos?'Cumple requisitos':'No cumple requisitos';
+  document.getElementById('modal-cand-resumen').textContent=c.resumen||'Sin información';
+  document.getElementById('modal-cand-fortalezas').textContent=c.fortalezas||'Sin información';
+  document.getElementById('modal-cand-brechas').textContent=c.brechas||'Sin información';
+  document.getElementById('modal-cand-riesgos').textContent=c.riesgos||'Sin información';
+  const criterios=(c.analisis_json?.criterios)||[];
+  const criteriosWrap=document.getElementById('modal-cand-criterios-wrap');
+  const criteriosEl=document.getElementById('modal-cand-criterios');
+  if(criterios.length){
+    criteriosEl.innerHTML=criterios.map(cr=>`<div class="criterio-row ${cr.cumple?'criterio-ok':'criterio-bad'}">
+      <div class="criterio-top"><span class="criterio-label">${cr.cumple?'✓':'✗'} ${escapeHtml(cr.criterio)}</span><span class="criterio-puntaje">${cr.puntaje??0} pts</span></div>
+      <p class="criterio-evidencia">${escapeHtml(cr.evidencia||'')}</p>
+    </div>`).join('');
+    criteriosWrap.classList.remove('hidden');
+  } else {
+    criteriosWrap.classList.add('hidden');
+  }
+  document.getElementById('modal-candidato').classList.remove('hidden');
+}
+
+function cerrarModalCandidato(){
+  document.getElementById('modal-candidato').classList.add('hidden');
+}
+
+async function eliminarCandidato(candidatoId){
+  const c=state.candidatos.find(x=>x.id===candidatoId);
+  if(!c)return;
+  if(!confirm(`¿Eliminar el CV de "${c.nombre_candidato||c.nombre_archivo}"? Esta acción no se puede deshacer.`))return;
+  if(c.storage_bucket&&c.storage_path){
+    const {error:storageErr}=await sb.storage.from(c.storage_bucket).remove([c.storage_path]);
+    if(storageErr)console.warn('No se pudo eliminar el archivo del storage:',storageErr.message);
+  }
+  const {error}=await sb.from('seleccion_candidatos').delete().eq('id',candidatoId);
+  if(error){toast(error.message);return}
+  toast('CV eliminado');
+  await cargarSeleccion();
+}
+
+async function cerrarPlaza(convId){
+  if(!confirm('¿Cerrar esta plaza sin registrar contratación?'))return;
+  const {error}=await sb.from('seleccion_convocatorias').update({estado:'cerrada',updated_at:new Date().toISOString()}).eq('id',convId);
+  if(error){toast(error.message);return}
+  toast('Plaza cerrada');
+  await cargarSeleccion();
+}
+
+async function reabrirPlaza(convId){
+  const {error}=await sb.from('seleccion_convocatorias').update({estado:'abierta',updated_at:new Date().toISOString()}).eq('id',convId);
+  if(error){toast(error.message);return}
+  toast('Plaza reabierta');
   await cargarSeleccion();
 }
 
@@ -558,43 +775,73 @@ async function subirCandidatosSeleccion(){
   await cargarSeleccion();
 }
 
+let _seleccionPollTimer=null;
+function iniciarPollingSeleccion(convocatoriaId,totalCandidatos){
+  if(_seleccionPollTimer)clearInterval(_seleccionPollTimer);
+  let intentos=0;
+  _seleccionPollTimer=setInterval(async()=>{
+    intentos++;
+    const {data:cands}=await sb.from('seleccion_candidatos').select('estado').eq('convocatoria_id',convocatoriaId);
+    const analizados=(cands||[]).filter(c=>c.estado==='analizado').length;
+    // Actualizar conteo visual en tiempo real
+    const progEl=document.getElementById('sel-analisis-progreso');
+    if(progEl)progEl.textContent=`Analizando CVs... ${analizados} de ${totalCandidatos} completados`;
+    if(totalCandidatos>0&&analizados>=totalCandidatos){
+      clearInterval(_seleccionPollTimer);_seleccionPollTimer=null;
+      // El frontend cierra la convocatoria (n8n ya no lo hace)
+      await sb.from('seleccion_convocatorias').update({estado:'completada',updated_at:new Date().toISOString()}).eq('id',convocatoriaId);
+      await cargarSeleccion();
+      toast('Análisis completado');
+    } else if(intentos>=72){
+      clearInterval(_seleccionPollTimer);_seleccionPollTimer=null;
+      await cargarSeleccion();
+    }
+  },5000);
+}
+
 async function analizarConvocatoriaSeleccion(){
   const actual=selectedConvocatoria();
   if(!actual){toast('Selecciona una convocatoria');return}
   const webhook=seleccionWebhook();
-  if(!webhook){toast('Configura el webhook de n8n');return}
-  localStorage.setItem('people360-seleccion-webhook',webhook);
   const candidatos=state.candidatos.filter(c=>c.convocatoria_id===actual.id);
   if(!candidatos.length){toast('Carga al menos un CV');return}
   await sb.from('seleccion_convocatorias').update({estado:'analizando',updated_at:new Date().toISOString()}).eq('id',actual.id);
-  try{
-    const res=await fetch(webhook,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        source:'people360',
-        supabase_url:SUPA_URL,
-        convocatoria_id:actual.id,
-        titulo:actual.titulo,
-        puesto:actual.puesto,
-        requisitos:actual.requisitos,
-        candidatos:candidatos.map(c=>({id:c.id,nombre_archivo:c.nombre_archivo,bucket:c.storage_bucket,path:c.storage_path,mime_type:c.mime_type}))
-      })
-    });
-    const text=await res.text();
-    if(!res.ok)throw new Error(text||`Error ${res.status} en n8n`);
-    toast('Analisis enviado a n8n');
-  }catch(error){
-    await sb.from('seleccion_convocatorias').update({estado:'abierta',updated_at:new Date().toISOString()}).eq('id',actual.id);
-    toast(error.message);
+  // Enviar 1 webhook por candidato — cada uno corre como ejecucion independiente en n8n
+  let enviados=0;
+  for(const cand of candidatos){
+    try{
+      const res=await fetch(webhook,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          source:'people360',
+          supabase_url:SUPA_URL,
+          convocatoria_id:actual.id,
+          titulo:actual.titulo,
+          puesto:actual.puesto,
+          requisitos:actual.requisitos,
+          candidatos:[{id:cand.id,nombre_archivo:cand.nombre_archivo,bucket:cand.storage_bucket,path:cand.storage_path,mime_type:cand.mime_type}]
+        })
+      });
+      if(res.ok)enviados++;
+    }catch(e){console.warn('Error enviando candidato a n8n:',e.message)}
   }
+  if(!enviados){
+    await sb.from('seleccion_convocatorias').update({estado:'abierta',updated_at:new Date().toISOString()}).eq('id',actual.id);
+    toast('No se pudo conectar con n8n');
+    await cargarSeleccion();
+    return;
+  }
+  toast(`Analizando ${enviados} CV(s) — actualizando cada 5 seg...`);
+  iniciarPollingSeleccion(actual.id,candidatos.length);
   await cargarSeleccion();
 }
 
 function nuevoEmpleado(){
-  ['emp-id','emp-nombre','emp-email','emp-password','emp-empresa','emp-departamento','emp-puesto','emp-telefono','emp-fecha-ingreso','emp-jefe-nombre','emp-jefe-email'].forEach(id=>document.getElementById(id).value='');
+  ['emp-id','emp-nombre','emp-email','emp-password','emp-empresa','emp-departamento','emp-puesto','emp-telefono','emp-fecha-ingreso','emp-jefe-nombre','emp-jefe-email','emp-biometria-motivo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('emp-rol').value='empleado';
   document.getElementById('emp-vacaciones').value='15';
+  document.getElementById('emp-biometria').checked=true;
   document.getElementById('emp-email').disabled=false;
 }
 
@@ -614,6 +861,8 @@ function editarEmpleado(id){
   document.getElementById('emp-vacaciones').value=e.dias_vacaciones_total||15;
   document.getElementById('emp-jefe-nombre').value=e.jefe_nombre||'';
   document.getElementById('emp-jefe-email').value=e.jefe_email||'';
+  document.getElementById('emp-biometria').checked=Boolean(e.biometria_marcaje_requerida);
+  document.getElementById('emp-biometria-motivo').value=e.biometria_marcaje_excepcion_motivo||'';
   showTab('empleados');
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -634,7 +883,9 @@ function empleadoFormData(){
     fecha_ingreso:document.getElementById('emp-fecha-ingreso').value||null,
     dias_vacaciones_total:Number(document.getElementById('emp-vacaciones').value||15),
     jefe_nombre:document.getElementById('emp-jefe-nombre').value.trim(),
-    jefe_email:document.getElementById('emp-jefe-email').value.trim()
+    jefe_email:document.getElementById('emp-jefe-email').value.trim(),
+    biometria_marcaje_requerida:document.getElementById('emp-biometria').checked,
+    biometria_marcaje_excepcion_motivo:document.getElementById('emp-biometria-motivo').value.trim()
   };
 }
 
@@ -645,6 +896,13 @@ async function guardarEmpleado(){
   try{
     const data=await callFunction('admin-empleado-save',{empleado});
     if(data&&data.error){toast(data.error);return}
+    if(data&&data.user_id){
+      const bioRes=await sb.from('profiles').update({
+        biometria_marcaje_requerida:empleado.biometria_marcaje_requerida,
+        biometria_marcaje_excepcion_motivo:empleado.biometria_marcaje_requerida?'':empleado.biometria_marcaje_excepcion_motivo
+      }).eq('id',data.user_id);
+      if(bioRes.error){toast('Usuario guardado, pero no se pudo actualizar biometria: '+bioRes.error.message);return}
+    }
     toast('Usuario guardado');
     nuevoEmpleado();
     await refreshAll();
@@ -663,22 +921,53 @@ function renderTables(){
   document.getElementById('tabla-solicitudes').innerHTML=table(['Categoria','Empleado','Area','Tipo','Detalles','Inicio','Fin','Estado','Creado'],state.solicitudesReporte.map(solicitud));
 }
 
-function renderCharts(correctos,fuera,sinUso,conUso){
-  chart('chart-puntualidad','doughnut',['En horario','Fuera'],[correctos,fuera],['#18b978','#ee3f45']);
-  chart('chart-uso','bar',['Usan app','Sin uso'],[conUso,sinUso],['#20c5dc','#101820']);
-  const pendientes=state.solicitudesReporte.filter(s=>s.estado==='pendiente').length;
-  const aprobadas=state.solicitudesReporte.filter(s=>s.estado==='aprobada').length;
-  const otras=Math.max(0,state.solicitudesReporte.length-pendientes-aprobadas);
-  chart('chart-solicitudes','doughnut',['Pendientes','Aprobadas','Otras'],[pendientes,aprobadas,otras],['#ee3f45','#18b978','#20c5dc']);
+function renderCharts(correctos,fuera,sinUso,conUso,resumen,solicitudes,vacaciones,ausencias){
+  const dlD={
+    display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,
+    formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return t?Math.round(v/t*100)+'%':''},
+    color:'#fff',font:{weight:800,size:12}
+  };
+  const dlB={display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,anchor:'end',align:'end',offset:2,formatter:v=>v,color:'#657481',font:{weight:800,size:11}};
+  chart('chart-puntualidad','doughnut',['En horario','Fuera'],[correctos,fuera],['#18b978','#ee3f45'],dlD);
+  const pend=solicitudes.filter(s=>s.estado==='pendiente').length;
+  const apr=solicitudes.filter(s=>s.estado==='aprobada').length;
+  const otras=Math.max(0,solicitudes.length-pend-apr);
+  chart('chart-solicitudes','doughnut',['Pendientes','Aprobadas','Otras'],[pend,apr,otras],['#ee3f45','#18b978','#20c5dc'],dlD);
+  chart('chart-ausencias','doughnut',['Vacaciones','Ausencias','Solicitudes'],[vacaciones.length,ausencias.length,solicitudes.filter(s=>s.categoria==='Solicitud varias').length],['#20c5dc','#ee3f45','#f5a623'],dlD);
+  chart('chart-uso','bar',['Usan app','Sin uso'],[conUso,sinUso],['#20c5dc','#101820'],dlB);
+  const areaMap=new Map();
+  state.empleados.forEach(e=>{const d=e.departamento||'Sin área';areaMap.set(d,(areaMap.get(d)||0)+1);});
+  const areasSorted=[...areaMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const COLORS=['#20c5dc','#18b978','#ee3f45','#f5a623','#9b59b6','#3498db','#e74c3c','#2ecc71'];
+  chartH('chart-areas',areasSorted.map(a=>a[0]),areasSorted.map(a=>a[1]),areasSorted.map((_,i)=>COLORS[i%8]),
+    {display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,anchor:'end',align:'right',offset:4,formatter:v=>v,color:'#657481',font:{weight:800,size:11}});
+  const deptMap=new Map();
+  state.resumen.forEach(r=>{const d=r.departamento||'Sin área';if(!deptMap.has(d))deptMap.set(d,{enH:0,fuera:0});if(r.en_horario)deptMap.get(d).enH++;else deptMap.get(d).fuera++;});
+  const topDepts=[...deptMap.entries()].sort((a,b)=>(b[1].enH+b[1].fuera)-(a[1].enH+a[1].fuera)).slice(0,6);
+  chartMulti('chart-puntuarea','bar',topDepts.map(d=>d[0]),[
+    {label:'En horario',data:topDepts.map(d=>d[1].enH),backgroundColor:'#18b978',borderWidth:0},
+    {label:'Fuera/Sin uso',data:topDepts.map(d=>d[1].fuera),backgroundColor:'#ee3f45',borderWidth:0}
+  ],{display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,anchor:'end',align:'end',offset:2,formatter:v=>v,color:'#657481',font:{weight:800,size:10}});
+  const convEst={abierta:0,completada:0,cerrada:0,contratado:0};
+  state.convocatorias.forEach(c=>{const e=c.estado||'abierta';if(Object.hasOwn(convEst,e))convEst[e]++;});
+  chart('chart-seleccion','doughnut',['Abierta','Completada','Cerrada','Contratado'],[convEst.abierta,convEst.completada,convEst.cerrada,convEst.contratado],['#20c5dc','#18b978','#657481','#9b59b6'],dlD);
 }
 
-function chart(id,type,labels,data,colors){
+function chart(id,type,labels,data,colors,dlOpts){
   if(state.charts[id])state.charts[id].destroy();
-  state.charts[id]=new Chart(document.getElementById(id),{
-    type,
-    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}}}
-  });
+  const opts={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},datalabels:dlOpts||{display:false}}};
+  if(type==='bar')opts.scales={y:{beginAtZero:true,ticks:{precision:0}}};
+  state.charts[id]=new Chart(document.getElementById(id),{type,data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},options:opts});
+}
+
+function chartH(id,labels,data,colors,dlOpts){
+  if(state.charts[id])state.charts[id].destroy();
+  state.charts[id]=new Chart(document.getElementById(id),{type:'bar',data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:0}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:dlOpts||{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+}
+
+function chartMulti(id,type,labels,datasets,dlOpts){
+  if(state.charts[id])state.charts[id].destroy();
+  state.charts[id]=new Chart(document.getElementById(id),{type,data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},datalabels:dlOpts||{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
 }
 
 function descargarExcel(){
@@ -705,6 +994,121 @@ function descargarExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ausencias),'Ausencias');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(varias),'Solicitudes varias');
   XLSX.writeFile(wb,`reporte_rrhh_${todayISO()}.xlsx`);
+}
+
+function sheetName(name,used=new Set()){
+  const base=String(name||'Hoja')
+    .replace(/[\[\]\*\/\\\?:]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim()
+    .slice(0,31)||'Hoja';
+  let final=base;
+  let i=2;
+  while(used.has(final)){
+    const suffix=` ${i++}`;
+    final=base.slice(0,31-suffix.length)+suffix;
+  }
+  used.add(final);
+  return final;
+}
+
+function preguntaLabel(p,index){
+  return String(p?.texto||p?.pregunta||p?.titulo||p?.label||`Pregunta ${index+1}`).trim()||`Pregunta ${index+1}`;
+}
+
+function respuestaValor(respuestas,key,index){
+  if(!respuestas)return '';
+  if(Array.isArray(respuestas)){
+    const r=respuestas[index];
+    if(r&&typeof r==='object')return r.respuesta??r.valor??r.value??r.texto??'';
+    return r??'';
+  }
+  if(typeof respuestas==='object'){
+    const val=respuestas[key]??respuestas[String(index)]??respuestas[index];
+    if(val&&typeof val==='object')return val.respuesta??val.valor??val.value??val.texto??'';
+    return val??'';
+  }
+  return '';
+}
+
+async function descargarExcelEncuestas(){
+  try{
+    toast('Preparando reporte de encuestas...');
+    const [encRes,respRes]=await Promise.all([
+      sb.from('encuestas').select('*').order('created_at',{ascending:false}),
+      sb.from('respuestas_encuestas').select('*').order('created_at',{ascending:true})
+    ]);
+    if(encRes.error)throw encRes.error;
+    if(respRes.error)throw respRes.error;
+    const encuestas=encRes.data||[];
+    const respuestas=respRes.data||[];
+    if(!encuestas.length){toast('No hay encuestas para exportar');return}
+    const wb=XLSX.utils.book_new();
+    const used=new Set();
+    const resumen=encuestas.map(e=>{
+      const targetEmployees=state.empleados.filter(emp=>!e.departamento||(emp.departamento||'')===e.departamento);
+      const totalRespuestas=respuestas.filter(r=>String(r.encuesta_id)===String(e.id)).length;
+      return {
+        encuesta:e.titulo||e.nombre||e.id,
+        area:e.departamento||'Todos',
+        activa:Boolean(e.activa),
+        cierre:e.fecha_cierre||'',
+        preguntas:Array.isArray(e.preguntas)?e.preguntas.length:0,
+        empleados_destino:targetEmployees.length,
+        respondieron:totalRespuestas,
+        pendientes:Math.max(0,targetEmployees.length-totalRespuestas),
+        creada:e.created_at||''
+      };
+    });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumen),sheetName('Resumen encuestas',used));
+    encuestas.forEach((enc,idx)=>{
+      const preguntas=Array.isArray(enc.preguntas)?enc.preguntas:[];
+      const rows=respuestas
+        .filter(r=>String(r.encuesta_id)===String(enc.id))
+        .map(r=>{
+          const emp=empleadoById(r.user_id);
+          const row={
+            encuesta:enc.titulo||enc.nombre||`Encuesta ${idx+1}`,
+            empleado:emp.nombre_completo||emp.email||r.user_id,
+            email:emp.email||'',
+            area:emp.departamento||'',
+            puesto:emp.puesto||'',
+            jefe:emp.jefe_nombre||'',
+            jefe_email:emp.jefe_email||'',
+            respondido_en:r.created_at||''
+          };
+          preguntas.forEach((p,i)=>{
+            const key=p.id||p.key||p.codigo||preguntaLabel(p,i);
+            row[preguntaLabel(p,i)]=respuestaValor(r.respuestas,key,i);
+          });
+          if(!preguntas.length)row.respuestas_json=JSON.stringify(r.respuestas||{});
+          return row;
+        });
+      const targetEmployees=state.empleados.filter(emp=>!enc.departamento||(emp.departamento||'')===enc.departamento);
+      const answered=new Set(respuestas.filter(r=>String(r.encuesta_id)===String(enc.id)).map(r=>String(r.user_id)));
+      const pendientes=targetEmployees
+        .filter(emp=>!answered.has(String(emp.id)))
+        .map(emp=>({
+          encuesta:enc.titulo||enc.nombre||`Encuesta ${idx+1}`,
+          empleado:emp.nombre_completo||emp.email,
+          email:emp.email||'',
+          area:emp.departamento||'',
+          puesto:emp.puesto||'',
+          jefe:emp.jefe_nombre||'',
+          jefe_email:emp.jefe_email||'',
+          estado:'Pendiente'
+        }));
+      const data=rows.length?rows:[{encuesta:enc.titulo||enc.nombre||`Encuesta ${idx+1}`,estado:'Sin respuestas'}];
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(data),sheetName(enc.titulo||enc.nombre||`Encuesta ${idx+1}`,used));
+      if(pendientes.length){
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pendientes),sheetName(`Pendientes ${idx+1}`,used));
+      }
+    });
+    XLSX.writeFile(wb,`reporte_encuestas_${todayISO()}.xlsx`);
+    toast('Reporte de encuestas generado');
+  }catch(error){
+    toast('No se pudo exportar encuestas: '+error.message);
+  }
 }
 
 function prefijoEmpleado(userId){
@@ -911,12 +1315,431 @@ async function enviarNotificacion(){
   }
 }
 
+// ── ENCUESTAS DE CLIMA ───────────────────────────────────────────────────────
+async function cargarEncuestas(){
+  const {data,error}=await sb.from('encuestas').select('*').order('created_at',{ascending:false});
+  if(error){toast(error.message);return}
+  state.encuestas=data||[];
+  renderEncuestasAdmin();
+}
+
+function renderEncuestasAdmin(){
+  const tableEl=document.getElementById('tabla-encuestas');
+  if(!tableEl)return;
+  const rows=(state.encuestas||[]).map(e=>`<tr>
+    <td><strong>${escapeHtml(e.titulo)}</strong></td>
+    <td>${escapeHtml(e.departamento||'Todos')}</td>
+    <td>${Array.isArray(e.preguntas)?e.preguntas.length:0}</td>
+    <td class="${e.activa?'ok':'bad'}">${e.activa?'Activa':'Inactiva'}</td>
+    <td>${escapeHtml(e.fecha_cierre||'—')}</td>
+    <td>${escapeHtml(String(e.created_at||'').slice(0,10))}</td>
+    <td><div class="row-actions">
+      <button class="mini" onclick="verResultadosEncuesta('${e.id}')">Resultados</button>
+      <button class="mini secondary" onclick="editarEncuesta('${e.id}')">Editar</button>
+      <button class="mini secondary" onclick="toggleEncuestaAdmin('${e.id}',${Boolean(e.activa)})">${e.activa?'Desactivar':'Activar'}</button>
+      <button class="mini secondary danger" onclick="eliminarEncuestaAdmin('${e.id}')">Eliminar</button>
+    </div></td>
+  </tr>`);
+  tableEl.innerHTML=table(['Título','Área','Preguntas','Estado','Cierre','Creada','Acciones'],rows.length?rows:['<tr><td colspan="7">Sin encuestas creadas</td></tr>']);
+}
+
+function addPregunta(tipo){
+  encPreguntas.push({_id:Date.now()+Math.random(),tipo,texto:'',opciones:['','']});
+  renderPreguntasList();
+}
+
+function removePregunta(localId){
+  encPreguntas=encPreguntas.filter(p=>String(p._id)!==String(localId));
+  renderPreguntasList();
+}
+
+function addOpcion(pregId){
+  const p=encPreguntas.find(x=>String(x._id)===String(pregId));
+  if(p){p.opciones.push('');renderPreguntasList();}
+}
+
+function syncEncPreguntas(){
+  const ct=document.getElementById('enc-preguntas-list');
+  if(!ct)return;
+  ct.querySelectorAll('.enc-q-txt').forEach(inp=>{
+    const p=encPreguntas.find(x=>String(x._id)===inp.dataset.pregid);
+    if(p)p.texto=inp.value;
+  });
+  ct.querySelectorAll('.enc-op-inp').forEach(inp=>{
+    const p=encPreguntas.find(x=>String(x._id)===inp.dataset.pregid);
+    if(p)p.opciones[Number(inp.dataset.opidx)]=inp.value;
+  });
+}
+
+function renderPreguntasList(){
+  const ct=document.getElementById('enc-preguntas-list');
+  if(!ct)return;
+  if(!encPreguntas.length){
+    ct.innerHTML='<p class="hint" style="text-align:center;padding:20px;">Sin preguntas. Agrega al menos una usando los botones de arriba.</p>';
+    return;
+  }
+  const TIPO_LABEL={rating:'Calificación 1-5',texto:'Texto libre',opcion:'Opciones'};
+  ct.innerHTML=encPreguntas.map((p,i)=>{
+    const opcionesHtml=p.tipo==='opcion'
+      ?`<div style="margin-top:8px"><div id="ops-${p._id}">${(p.opciones||['','']).map((op,oi)=>`<div style="display:flex;gap:6px;margin-bottom:4px"><input class="enc-op-inp" style="flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:8px;" data-pregid="${p._id}" data-opidx="${oi}" value="${escapeHtml(op)}" placeholder="Opción ${oi+1}"></div>`).join('')}</div><button class="secondary mini" style="margin-top:4px" onclick="syncEncPreguntas();addOpcion('${p._id}')">+ Opción</button></div>`
+      :'';
+    return `<div style="background:#f7fbfd;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:.75rem;font-weight:800;color:var(--muted);min-width:22px">${i+1}.</span>
+        <span style="font-size:.7rem;background:var(--acc);color:#051014;padding:2px 9px;border-radius:999px;font-weight:800;white-space:nowrap">${TIPO_LABEL[p.tipo]||p.tipo}</span>
+        <input style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;" class="enc-q-txt" data-pregid="${p._id}" value="${escapeHtml(p.texto)}" placeholder="Escribe aquí el texto de la pregunta">
+        <button class="mini secondary danger" onclick="syncEncPreguntas();removePregunta('${p._id}')">✕</button>
+      </div>
+      ${opcionesHtml}
+    </div>`;
+  }).join('');
+}
+
+function limpiarEncuesta(){
+  document.getElementById('enc-id').value='';
+  document.getElementById('enc-titulo-admin').value='';
+  document.getElementById('enc-desc-admin').value='';
+  document.getElementById('enc-dept').value='';
+  document.getElementById('enc-cierre').value='';
+  document.getElementById('enc-activa').value='true';
+  encPreguntas=[];
+  renderPreguntasList();
+}
+
+function editarEncuesta(id){
+  const e=state.encuestas.find(x=>String(x.id)===String(id));
+  if(!e)return;
+  document.getElementById('enc-id').value=e.id;
+  document.getElementById('enc-titulo-admin').value=e.titulo||'';
+  document.getElementById('enc-desc-admin').value=e.descripcion||'';
+  document.getElementById('enc-dept').value=e.departamento||'';
+  document.getElementById('enc-cierre').value=e.fecha_cierre||'';
+  document.getElementById('enc-activa').value=e.activa?'true':'false';
+  encPreguntas=(Array.isArray(e.preguntas)?e.preguntas:[]).map((p,i)=>({
+    _id:Date.now()+i,tipo:p.tipo||'rating',texto:p.texto||p.pregunta||'',opciones:p.opciones||['','']
+  }));
+  renderPreguntasList();
+  showTab('encuestas');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function guardarEncuesta(){
+  syncEncPreguntas();
+  const id=document.getElementById('enc-id').value||null;
+  const titulo=document.getElementById('enc-titulo-admin').value.trim();
+  const descripcion=document.getElementById('enc-desc-admin').value.trim();
+  const departamento=document.getElementById('enc-dept').value.trim();
+  const fecha_cierre=document.getElementById('enc-cierre').value||null;
+  const activa=document.getElementById('enc-activa').value==='true';
+  if(!titulo){toast('Ingresa el título de la encuesta');return}
+  if(!encPreguntas.length){toast('Agrega al menos una pregunta');return}
+  const preguntas=encPreguntas.map(p=>({
+    tipo:p.tipo,texto:p.texto,
+    ...(p.tipo==='opcion'?{opciones:(p.opciones||[]).filter(o=>o.trim())}:{})
+  }));
+  const row={titulo,descripcion:descripcion||null,preguntas,activa,departamento:departamento||null,fecha_cierre,updated_at:new Date().toISOString()};
+  const result=id
+    ?await sb.from('encuestas').update(row).eq('id',id).select('id').single()
+    :await sb.from('encuestas').insert({...row,created_by:state.user.id}).select('id').single();
+  const {data,error}=result;
+  if(error){toast(error.message);return}
+  if(!id&&activa){
+    callFunction('notificaciones-manage',{
+      action:'broadcast',
+      titulo:'Nueva encuesta de clima',
+      mensaje:`RRHH publico una nueva encuesta: ${titulo}. Por favor respondela desde el modulo Encuestas de clima.`,
+      scope:departamento?'departamento':'todos',
+      departamento:departamento||''
+    }).catch(e=>console.error('No se pudo notificar encuesta:', e));
+  }
+  toast(id?'Encuesta actualizada':'Encuesta creada');
+  limpiarEncuesta();
+  await cargarEncuestas();
+}
+
+async function toggleEncuestaAdmin(id,activa){
+  const {error}=await sb.from('encuestas').update({activa:!activa,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){toast(error.message);return}
+  toast(activa?'Encuesta desactivada':'Encuesta activada');
+  await cargarEncuestas();
+}
+
+async function eliminarEncuestaAdmin(id){
+  if(!confirm('Eliminar esta encuesta y todas sus respuestas? Esta accion no se puede deshacer.'))return;
+  const {error}=await sb.from('encuestas').delete().eq('id',id);
+  if(error){toast(error.message);return}
+  toast('Encuesta eliminada');
+  await cargarEncuestas();
+}
+
+async function verResultadosEncuesta(id){
+  const enc=state.encuestas.find(x=>String(x.id)===String(id));
+  if(!enc)return;
+  const {data:resp,error}=await sb.from('respuestas_encuestas').select('*').eq('encuesta_id',id);
+  if(error){toast(error.message);return}
+  const total=resp?.length||0;
+  const preguntas=Array.isArray(enc.preguntas)?enc.preguntas:[];
+  const targetEmployees=state.empleados
+    .filter(e=>!['admin','rrhh'].includes(String(e.rol||'').toLowerCase()))
+    .filter(e=>!enc.departamento||String(e.departamento||'')===String(enc.departamento||''));
+  const respByUser=new Map((resp||[]).map(r=>[String(r.user_id),r]));
+  const respondieron=targetEmployees.filter(e=>respByUser.has(String(e.id)));
+  const pendientes=targetEmployees.filter(e=>!respByUser.has(String(e.id)));
+  let html=`<h2>${escapeHtml(enc.titulo)}</h2><p class="hint" style="margin-bottom:18px">${total} respuesta(s) totales · ${pendientes.length} pendiente(s)</p>`;
+  if(!total){html+='<p class="hint" style="text-align:center;padding:24px">Aún no hay respuestas para esta encuesta.</p>';}
+  preguntas.forEach((p,i)=>{
+    html+=`<div style="background:#f7fbfd;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px">`;
+    html+=`<div style="font-weight:800;font-size:.9rem;margin-bottom:10px">${i+1}. ${escapeHtml(p.texto||p.pregunta||'')}</div>`;
+    if(p.tipo==='rating'){
+      const vals=(resp||[]).map(r=>Number(r.respuestas?.[i]||0)).filter(Boolean);
+      const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):'—';
+      html+=`<div style="font-size:2rem;font-weight:900;color:var(--acc2)">${avg}<span style="font-size:.85rem;color:var(--muted);margin-left:6px">/5</span></div>`;
+      html+=`<div style="font-size:.75rem;color:var(--muted);margin-top:2px">Promedio · ${vals.length} respuesta(s)</div>`;
+      const dist=[1,2,3,4,5].map(n=>({n,cnt:vals.filter(v=>v===n).length}));
+      html+=`<div style="margin-top:10px">${dist.map(d=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="min-width:16px;font-size:.78rem;font-weight:800">${d.n}</span><div style="height:10px;background:var(--acc);border-radius:4px;width:${vals.length?Math.round(d.cnt/vals.length*100):0}%;min-width:${d.cnt?'8px':'2px'}"></div><span style="font-size:.75rem;color:var(--muted)">${d.cnt}</span></div>`).join('')}</div>`;
+    }else if(p.tipo==='opcion'&&Array.isArray(p.opciones)){
+      const counts=Object.fromEntries(p.opciones.map(op=>[op,0]));
+      (resp||[]).forEach(r=>{const v=r.respuestas?.[i];if(v&&counts[v]!==undefined)counts[v]++;});
+      html+=Object.entries(counts).map(([op,cnt])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="min-width:130px;font-size:.83rem">${escapeHtml(op)}</span><div style="height:14px;background:var(--acc);border-radius:4px;width:${total?Math.round(cnt/total*100):0}%;min-width:${cnt?'14px':'2px'}"></div><span style="font-size:.8rem;font-weight:800">${cnt}</span></div>`).join('');
+    }else{
+      const textos=(resp||[]).map(r=>r.respuestas?.[i]).filter(Boolean);
+      html+=textos.length?textos.slice(0,30).map(t=>`<div style="font-size:.82rem;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:4px">"${escapeHtml(String(t))}"</div>`).join(''):`<span style="color:var(--muted);font-size:.82rem">Sin respuestas</span>`;
+    }
+    html+='</div>';
+  });
+  html+=`<div style="background:#f7fbfd;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px">
+    <h3 style="margin:0 0 10px;font-size:.88rem">Respondieron (${respondieron.length})</h3>
+    <div class="table-wrap" style="max-height:260px"><table>${table(['Empleado','Área','Jefe','Fecha'],respondieron.map(e=>{
+      const r=respByUser.get(String(e.id));
+      return `<tr><td>${escapeHtml(e.nombre_completo||e.email)}</td><td>${escapeHtml(e.departamento||'')}</td><td>${escapeHtml(e.jefe_nombre||'')}</td><td>${escapeHtml(String(r?.created_at||'').slice(0,16).replace('T',' '))}</td></tr>`;
+    }))}</table></div>
+  </div>`;
+  html+=`<div style="background:#fff8f8;border:1px solid #ffd6d6;border-radius:12px;padding:14px;margin-bottom:12px">
+    <h3 style="margin:0 0 10px;font-size:.88rem;color:var(--red)">Pendientes (${pendientes.length})</h3>
+    <div class="table-wrap" style="max-height:260px"><table>${table(['Empleado','Área','Jefe','Correo'],pendientes.map(e=>`<tr><td>${escapeHtml(e.nombre_completo||e.email)}</td><td>${escapeHtml(e.departamento||'')}</td><td>${escapeHtml(e.jefe_nombre||'')}</td><td>${escapeHtml(e.email||'')}</td></tr>`))}</table></div>
+  </div>`;
+  document.getElementById('modal-resultados-content').innerHTML=html;
+  document.getElementById('modal-resultados-enc').classList.remove('hidden');
+}
+
+// ── CONFIGURACION EMPRESA (White-label) ───────────────────────────────────────
+async function cargarConfigEmpresa(){
+  const {data,error}=await sb.from('configuracion_empresa').select('*').limit(1).single();
+  if(error&&error.code!=='PGRST116'){toast('No se pudo cargar la configuración: '+error.message);return}
+  if(data){
+    document.getElementById('conf-id').value=data.id||'';
+    document.getElementById('conf-nombre').value=data.nombre_empresa||'';
+    if(data.color_primario)document.getElementById('conf-color1').value=data.color_primario;
+    if(data.color_secundario)document.getElementById('conf-color2').value=data.color_secundario;
+    document.getElementById('conf-foto-marcaje').checked=Boolean(data.foto_marcaje_activa);
+    if(data.logo_url){
+      document.getElementById('conf-logo-img').src=data.logo_url;
+      document.getElementById('conf-logo-preview').style.display='block';
+    }
+  }
+}
+
+async function guardarConfigEmpresa(){
+  const id=document.getElementById('conf-id').value||null;
+  const nombre_empresa=document.getElementById('conf-nombre').value.trim()||'People 360';
+  const color_primario=document.getElementById('conf-color1').value;
+  const color_secundario=document.getElementById('conf-color2').value;
+  const foto_marcaje_activa=document.getElementById('conf-foto-marcaje').checked;
+  const result=document.getElementById('conf-result');
+  result.textContent='Guardando...';
+  let logo_url=null;
+  const logoFile=document.getElementById('conf-logo-file').files[0];
+  if(logoFile){
+    if(logoFile.size>2*1024*1024){toast('El logo no debe superar 2 MB');result.textContent='';return}
+    const ext=logoFile.name.split('.').pop()||'png';
+    const path=`logo-${Date.now()}.${ext}`;
+    const {error:upErr}=await sb.storage.from('empresa-logos').upload(path,logoFile,{upsert:true,contentType:logoFile.type||'image/png'});
+    if(upErr){toast('Error al subir logo: '+upErr.message);result.textContent=upErr.message;return}
+    const {data:{publicUrl}}=sb.storage.from('empresa-logos').getPublicUrl(path);
+    logo_url=publicUrl;
+    document.getElementById('conf-logo-img').src=publicUrl;
+    document.getElementById('conf-logo-preview').style.display='block';
+  }
+  const patch={nombre_empresa,color_primario,color_secundario,foto_marcaje_activa,updated_at:new Date().toISOString()};
+  if(logo_url)patch.logo_url=logo_url;
+  const {error}=id
+    ?await sb.from('configuracion_empresa').update(patch).eq('id',id)
+    :await sb.from('configuracion_empresa').insert(patch);
+  if(error){toast(error.message);result.textContent=error.message;return}
+  toast('Configuración guardada');
+  result.textContent='Configuración guardada correctamente';
+  await cargarConfigEmpresa();
+}
+
+// ── LINKEDIN CANDIDATE SEARCH ────────────────────────────────
+const LINKEDIN_WEBHOOK_DEFAULT='http://localhost:5678/webhook/people360-linkedin-search';
+let liPollInterval=null;
+
+function linkedinWebhookUrl(){
+  const input=document.getElementById('li-webhook');
+  const value=(input?.value||'').trim();
+  if(value){
+    localStorage.setItem('people360-linkedin-webhook',value);
+    return value;
+  }
+  return LINKEDIN_WEBHOOK_DEFAULT;
+}
+
+function mostrarTabLinkedIn(){
+  const sel=document.getElementById('li-plaza-select');
+  const webhookInput=document.getElementById('li-webhook');
+  if(webhookInput&&!webhookInput.value){
+    webhookInput.value=localStorage.getItem('people360-linkedin-webhook')||LINKEDIN_WEBHOOK_DEFAULT;
+  }
+  if(sel){
+    const prev=sel.value;
+    sel.innerHTML='<option value="">— Selecciona una plaza —</option>'+
+      state.convocatorias.map(c=>`<option value="${c.id}"${String(c.id)===String(state.convocatoriaActual)||String(c.id)===prev?'selected':''}>${escapeHtml(c.titulo||c.puesto||'Plaza sin nombre')} (${c.estado})</option>`).join('');
+    const chosen=sel.value;
+    if(chosen)seleccionarPlazaLinkedIn(chosen);
+    else{
+      document.getElementById('li-search-section')?.classList.add('hidden');
+      document.getElementById('li-no-selection')?.classList.remove('hidden');
+    }
+  }
+}
+
+function seleccionarPlazaLinkedIn(id){
+  const liSearch=document.getElementById('li-search-section');
+  const liNo=document.getElementById('li-no-selection');
+  if(!id){
+    liSearch?.classList.add('hidden');
+    liNo?.classList.remove('hidden');
+    return;
+  }
+  const c=state.convocatorias.find(x=>String(x.id)===String(id));
+  if(!c)return;
+  liSearch?.classList.remove('hidden');
+  liNo?.classList.add('hidden');
+  const info=document.getElementById('li-plaza-info');
+  if(info)info.innerHTML=`<strong>${escapeHtml(c.titulo||c.puesto||'Sin nombre')}</strong> &nbsp;·&nbsp; ${escapeHtml(c.puesto||'')} &nbsp;·&nbsp; <span style="color:var(--acc)">${c.estado}</span>`;
+  const liQ=document.getElementById('li-query');
+  if(liQ&&c.puesto&&!liQ.value)liQ.value=c.puesto;
+  cargarProspectos(id);
+}
+
+function liPlazaActual(){
+  const sel=document.getElementById('li-plaza-select');
+  const id=sel?.value;
+  if(!id)return null;
+  return state.convocatorias.find(c=>String(c.id)===String(id))||null;
+}
+
+async function buscarEnLinkedIn(){
+  const actual=liPlazaActual();
+  if(!actual){toast('Selecciona una plaza primero');return;}
+  const query=document.getElementById('li-query').value.trim();
+  if(!query){toast('Ingresa los términos de búsqueda');return;}
+  const max=parseInt(document.getElementById('li-max').value)||5;
+  const status=document.getElementById('li-status');
+  const ct=document.getElementById('li-results');
+  status.textContent='Enviando búsqueda a n8n...';
+  ct.innerHTML='';
+  if(liPollInterval)clearInterval(liPollInterval);
+  try{
+    const webhookUrl=linkedinWebhookUrl();
+    const res=await fetch(webhookUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({convocatoria_id:actual.id,query,requisitos:actual.requisitos||'',max_results:max})
+    });
+    if(!res.ok)throw new Error('No se pudo conectar con n8n ('+res.status+')');
+  }catch(e){
+    status.textContent='Error: '+e.message+'. Verifica que el webhook de n8n sea público/alcanzable desde esta consola.';
+    return;
+  }
+  status.innerHTML='<span style="color:var(--acc)">&#8635; Analizando perfiles con IA... esto puede tomar 20-40 segundos.</span>';
+  const startCount=(await sb.from('seleccion_prospectos').select('id',{count:'exact',head:true}).eq('convocatoria_id',actual.id)).count||0;
+  let attempts=0;
+  liPollInterval=setInterval(async()=>{
+    attempts++;
+    const {data,count}=await sb.from('seleccion_prospectos').select('*',{count:'exact'}).eq('convocatoria_id',actual.id).order('score_match',{ascending:false});
+    if(count>startCount){
+      clearInterval(liPollInterval);
+      status.textContent=`${count} perfiles encontrados y analizados.`;
+      renderProspectos(data||[],ct);
+    }
+    if(attempts>=20){
+      clearInterval(liPollInterval);
+      if(!count||count<=startCount) status.textContent='No se encontraron nuevos resultados. Revisa los logs de n8n.';
+    }
+  },3000);
+}
+
+async function cargarProspectos(convocatoriaId){
+  const ct=document.getElementById('li-results');
+  const status=document.getElementById('li-status');
+  if(!ct)return;
+  const {data,count}=await sb.from('seleccion_prospectos').select('*',{count:'exact'}).eq('convocatoria_id',convocatoriaId).order('score_match',{ascending:false});
+  if(count>0){
+    if(status)status.textContent=`${count} perfiles guardados para esta plaza.`;
+    renderProspectos(data||[],ct);
+  }else{
+    ct.innerHTML='';
+    if(status)status.textContent='';
+  }
+}
+
+function renderProspectos(prospectos,ct){
+  if(!prospectos.length){ct.innerHTML='<p class="hint">Sin resultados aún.</p>';return;}
+  ct.innerHTML=prospectos.map(p=>{
+    const score=p.score_match||0;
+    const cls=score>=70?'li-alto':score>=40?'li-medio':'li-bajo';
+    const estadoCls={'prospecto':'badge-blue','contactado':'badge-green','descartado':'badge-gray'}[p.estado]||'badge-gray';
+    return `<div class="li-card">
+      <div class="li-card-top">
+        <div class="li-info">
+          <strong>${escapeHtml(p.nombre||'Sin nombre')}</strong>
+          <span>${escapeHtml(p.titulo_actual||'')}${p.empresa_actual?' · '+escapeHtml(p.empresa_actual):''}</span>
+          ${p.ubicacion?`<span style="color:var(--muted);font-size:.78rem">${escapeHtml(p.ubicacion)}</span>`:''}
+        </div>
+        <div class="li-right">
+          <div class="li-score ${cls}">${score}</div>
+          <span class="status-badge ${estadoCls}" style="font-size:.7rem">${p.estado}</span>
+        </div>
+      </div>
+      ${p.resumen_ia?`<p class="li-resumen">${escapeHtml(p.resumen_ia)}</p>`:''}
+      <div class="li-actions">
+        <a href="${escapeHtml(p.linkedin_url)}" target="_blank" rel="noopener" class="li-btn-ver">Ver en LinkedIn ↗</a>
+        <button class="mini secondary" onclick="estadoProspecto('${p.id}','contactado')">Contactado</button>
+        <button class="mini secondary" onclick="estadoProspecto('${p.id}','descartado')">Descartar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function estadoProspecto(id,estado){
+  const {error}=await sb.from('seleccion_prospectos').update({estado}).eq('id',id);
+  if(error){toast(error.message);return;}
+  toast('Estado actualizado');
+  const actual=liPlazaActual();
+  if(actual)cargarProspectos(actual.id);
+}
+
+async function limpiarProspectos(){
+  const actual=liPlazaActual();
+  if(!actual)return;
+  if(!confirm('¿Eliminar todos los prospectos de LinkedIn de esta plaza?'))return;
+  const {error}=await sb.from('seleccion_prospectos').delete().eq('convocatoria_id',actual.id);
+  if(error){toast(error.message);return;}
+  toast('Prospectos eliminados');
+  document.getElementById('li-results').innerHTML='';
+  document.getElementById('li-status').textContent='';
+}
+
 window.addEventListener('DOMContentLoaded',async()=>{
   const {data:{session}}=await sb.auth.getSession();
   if(session){
-    document.getElementById('login-email').value=session.user.email||'';
-    document.getElementById('login-msg').textContent='Restaurando sesion...';
-    await enterConsole(session.user);
+    const savedRaw=sessionStorage.getItem('people360-tab');
+    const savedTab=CONSOLA_MODULOS.includes(savedRaw)?savedRaw:'dashboard';
+    const ok=await enterConsole(session.user,null,savedTab||null);
+    document.documentElement.removeAttribute('data-restoring');
+  } else {
+    document.documentElement.removeAttribute('data-restoring');
   }
 });
-
