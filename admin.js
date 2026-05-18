@@ -1630,6 +1630,33 @@ function liPlazaActual(){
   return state.convocatorias.find(c=>String(c.id)===String(id))||null;
 }
 
+function cleanLinkedInUrl(raw){
+  const value=String(raw||'').trim();
+  if(!value)return '';
+  try{
+    const url=new URL(value);
+    const host=url.hostname.toLowerCase();
+    if(host.includes('linkedin.com'))return url.href;
+    if(host==='translate.google.com'){
+      const wrapped=url.searchParams.get('u')||url.searchParams.get('url');
+      if(wrapped)return cleanLinkedInUrl(wrapped);
+    }
+  }catch(e){
+    return '';
+  }
+  return '';
+}
+
+function linkedInSearchUrl(prospecto){
+  const q=[
+    prospecto?.nombre,
+    prospecto?.titulo_actual,
+    prospecto?.empresa_actual,
+    'LinkedIn'
+  ].filter(Boolean).join(' ');
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
+}
+
 async function buscarEnLinkedIn(){
   const actual=liPlazaActual();
   if(!actual){toast('Selecciona una plaza primero');return;}
@@ -1691,6 +1718,11 @@ function renderProspectos(prospectos,ct){
     const score=p.score_match||0;
     const cls=score>=70?'li-alto':score>=40?'li-medio':'li-bajo';
     const estadoCls={'prospecto':'badge-blue','contactado':'badge-green','descartado':'badge-gray'}[p.estado]||'badge-gray';
+    const linkedinUrl=cleanLinkedInUrl(p.linkedin_url);
+    const fallbackUrl=linkedInSearchUrl(p);
+    const linkButton=linkedinUrl
+      ? `<a href="${escapeHtml(linkedinUrl)}" target="_blank" rel="noopener" class="li-btn-ver">Ver en LinkedIn ↗</a>`
+      : `<a href="${escapeHtml(fallbackUrl)}" target="_blank" rel="noopener" class="li-btn-ver li-btn-warn" title="n8n no devolvió un enlace directo válido">Buscar en LinkedIn ↗</a>`;
     return `<div class="li-card">
       <div class="li-card-top">
         <div class="li-info">
@@ -1705,7 +1737,7 @@ function renderProspectos(prospectos,ct){
       </div>
       ${p.resumen_ia?`<p class="li-resumen">${escapeHtml(p.resumen_ia)}</p>`:''}
       <div class="li-actions">
-        <a href="${escapeHtml(p.linkedin_url)}" target="_blank" rel="noopener" class="li-btn-ver">Ver en LinkedIn ↗</a>
+        ${linkButton}
         <button class="mini secondary" onclick="estadoProspecto('${p.id}','contactado')">Contactado</button>
         <button class="mini secondary" onclick="estadoProspecto('${p.id}','descartado')">Descartar</button>
       </div>

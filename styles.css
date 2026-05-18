@@ -226,6 +226,8 @@ tr.row-selected td{background:#edfdf7}
 .li-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .li-btn-ver{font-size:.78rem;font-weight:800;color:#7c3aed;text-decoration:none;border:1px solid #c4b5fd;border-radius:8px;padding:6px 10px;background:#f3f0ff}
 .li-btn-ver:hover{background:#ede9fe}
+.li-btn-warn{color:#a15c00;border-color:#ffd58a;background:#fff8e8}
+.li-btn-warn:hover{background:#fff2d4}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{display:inline-block;animation:spin 1.1s linear infinite;font-style:normal}
 .estado-analizando{color:var(--acc);font-weight:800;font-size:.82rem;display:inline-flex;align-items:center;gap:4px}
