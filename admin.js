@@ -41,6 +41,10 @@ function normDate(v){
   return String(v).slice(0,10);
 }
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function currentRole(){return String(state.profile?.rol||'').toLowerCase()}
+function isRrhhOnly(){return currentRole()==='rrhh'}
+function canSeeEmployee(emp){return !(isRrhhOnly()&&String(emp?.rol||'').toLowerCase()==='admin')}
+function visibleEmployees(){return state.empleados.filter(canSeeEmployee)}
 async function callFunction(name, body){
   const {data:{session}}=await sb.auth.getSession();
   if(!session)throw new Error('Tu sesion vencio. Inicia sesion de nuevo.');
@@ -102,6 +106,7 @@ function showTab(id){
   sessionStorage.setItem('people360-tab',id);
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===id));
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  document.querySelector('#emp-rol option[value="admin"]')?.toggleAttribute('hidden',isRrhhOnly());
   document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',seleccion:'Selección de Personal',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',encuestas:'Encuestas de Clima',configuracion:'Configuración de Empresa',perfiles:'Perfiles',linkedin:'Búsqueda LinkedIn'}[id]||id;
   if(id==='notificaciones'){renderNotifTargets();cargarProgramacionesNotif();}
   if(id==='solicitudes')cargarSolicitudesGestion();
@@ -128,7 +133,7 @@ async function refreshAll(){
   ]);
   if(empleadosRes.error){toast(empleadosRes.error.message);return}
   if(marcajesRes.error){toast(marcajesRes.error.message);return}
-  state.empleados=empleadosRes.data||[];
+  state.empleados=(empleadosRes.data||[]).filter(canSeeEmployee);
   state.marcajes=marcajesRes.data||[];
   state.vacaciones=vacacionesRes.data||[];
   state.ausencias=ausenciasRes.data||[];
@@ -251,7 +256,7 @@ function table(headers,rows){
 }
 
 function renderEmpleados(){
-  const rows=state.empleados.map(e=>`<tr><td>${escapeHtml(e.nombre_completo)}</td><td>${escapeHtml(e.email)}</td><td>${escapeHtml(e.departamento)}</td><td>${escapeHtml(e.puesto)}</td><td>${escapeHtml(e.rol)}</td><td class="${e.biometria_marcaje_requerida?'ok':'bad'}">${e.biometria_marcaje_requerida?'Requerida':'No requerida'}</td><td>${escapeHtml(e.jefe_email||'')}</td><td>${escapeHtml(e.fecha_ingreso||'')}</td><td><button class="mini secondary" onclick="editarEmpleado('${e.id}')">Editar</button></td></tr>`);
+  const rows=visibleEmployees().map(e=>`<tr><td>${escapeHtml(e.nombre_completo)}</td><td>${escapeHtml(e.email)}</td><td>${escapeHtml(e.departamento)}</td><td>${escapeHtml(e.puesto)}</td><td>${escapeHtml(e.rol)}</td><td class="${e.biometria_marcaje_requerida?'ok':'bad'}">${e.biometria_marcaje_requerida?'Requerida':'No requerida'}</td><td>${escapeHtml(e.jefe_email||'')}</td><td>${escapeHtml(e.fecha_ingreso||'')}</td><td><button class="mini secondary" onclick="editarEmpleado('${e.id}')">Editar</button></td></tr>`);
   document.getElementById('tabla-empleados').innerHTML=table(['Nombre','Email','Area','Puesto','Rol','Biometria','Correo vacaciones','Ingreso','Accion'],rows);
 }
 
@@ -840,6 +845,7 @@ async function analizarConvocatoriaSeleccion(){
 function nuevoEmpleado(){
   ['emp-id','emp-nombre','emp-email','emp-password','emp-empresa','emp-departamento','emp-puesto','emp-telefono','emp-fecha-ingreso','emp-jefe-nombre','emp-jefe-email','emp-biometria-motivo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('emp-rol').value='empleado';
+  document.querySelector('#emp-rol option[value="admin"]')?.toggleAttribute('hidden',isRrhhOnly());
   document.getElementById('emp-vacaciones').value='15';
   document.getElementById('emp-biometria').checked=true;
   document.getElementById('emp-email').disabled=false;
@@ -848,6 +854,8 @@ function nuevoEmpleado(){
 function editarEmpleado(id){
   const e=state.empleados.find(x=>x.id===id);
   if(!e)return;
+  if(isRrhhOnly()&&String(e.rol||'').toLowerCase()==='admin'){toast('RRHH no puede ver ni editar usuarios admin');return;}
+  document.querySelector('#emp-rol option[value="admin"]')?.toggleAttribute('hidden',isRrhhOnly());
   document.getElementById('emp-id').value=e.id||'';
   document.getElementById('emp-nombre').value=e.nombre_completo||'';
   document.getElementById('emp-email').value=e.email||'';
@@ -891,6 +899,7 @@ function empleadoFormData(){
 
 async function guardarEmpleado(){
   const empleado=empleadoFormData();
+  if(isRrhhOnly()&&String(empleado.rol||'').toLowerCase()==='admin'){toast('RRHH no puede crear ni editar usuarios admin');return}
   if(!empleado.email){toast('Ingresa el correo de acceso');return}
   if(!empleado.nombre_completo){toast('Ingresa el nombre completo');return}
   try{
