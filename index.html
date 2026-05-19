@@ -272,6 +272,69 @@
           </div>
           <pre id="notif-result"></pre>
         </article>
+
+        <article class="panel">
+          <h2>Notificaciones programadas</h2>
+          <p class="hint">Programa avisos automaticos para que se envien una vez o se repitan por dias, semanas o meses.</p>
+          <div class="form-grid notify-grid">
+            <label>Titulo <input id="sched-titulo" placeholder="Ej: Recordatorio de cierre de mes"></label>
+            <label>Enviar a
+              <select id="sched-scope" onchange="renderNotifTargets()">
+                <option value="todos">Todos los empleados</option>
+                <option value="departamento">Area especifica</option>
+                <option value="usuarios">Empleados seleccionados</option>
+              </select>
+            </label>
+            <label id="sched-area-wrap" class="hidden">Area
+              <select id="sched-area"></select>
+            </label>
+            <label id="sched-users-wrap" class="hidden">Empleados
+              <select id="sched-users" multiple size="6"></select>
+            </label>
+          </div>
+          <label class="wide-label">Mensaje
+            <textarea id="sched-mensaje" rows="4" placeholder="Escribe el mensaje automatico"></textarea>
+          </label>
+          <div class="form-grid notify-grid">
+            <label>Frecuencia
+              <select id="sched-frecuencia" onchange="renderScheduleFrequency()">
+                <option value="una_vez">Una sola vez</option>
+                <option value="diaria" selected>Diaria</option>
+                <option value="cada_n_dias">Cada ciertos dias</option>
+                <option value="semanal">Semanal</option>
+                <option value="mensual">Mensual</option>
+              </select>
+            </label>
+            <label id="sched-interval-wrap" class="hidden">Cada cuantos dias
+              <input id="sched-intervalo" type="number" min="1" value="2">
+            </label>
+            <label>Fecha de inicio
+              <input id="sched-inicio" type="date">
+            </label>
+            <label>Hora
+              <input id="sched-hora" type="time" value="08:00">
+            </label>
+            <label>Fecha fin opcional
+              <input id="sched-fin" type="date">
+            </label>
+          </div>
+          <div id="sched-weekdays" class="weekday-row hidden">
+            <label><input type="checkbox" value="1"> Lun</label>
+            <label><input type="checkbox" value="2"> Mar</label>
+            <label><input type="checkbox" value="3"> Mie</label>
+            <label><input type="checkbox" value="4"> Jue</label>
+            <label><input type="checkbox" value="5"> Vie</label>
+            <label><input type="checkbox" value="6"> Sab</label>
+            <label><input type="checkbox" value="0"> Dom</label>
+          </div>
+          <div class="actions">
+            <button onclick="crearProgramacionNotif()">Guardar programacion</button>
+            <button class="secondary" onclick="limpiarProgramacionNotif()">Limpiar programacion</button>
+          </div>
+          <pre id="sched-result"></pre>
+          <h3>Programaciones activas</h3>
+          <div class="table-wrap"><table id="tabla-notif-schedules"></table></div>
+        </article>
       </section>
 
       <section id="seleccion" class="tab">
@@ -389,15 +452,18 @@
 
           <div id="li-search-section" class="hidden">
             <div id="li-plaza-info" style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.82rem;color:var(--muted)"></div>
-            <div style="margin-bottom:10px">
+            <div style="display:none;margin-bottom:10px" aria-hidden="true">
               <label style="display:grid;gap:5px;color:var(--muted);font-size:.78rem;font-weight:800">Webhook n8n
                 <input id="li-webhook" placeholder="https://tu-n8n.com/webhook/people360-linkedin-search">
               </label>
               <p class="hint" style="margin:6px 0 0">Para pruebas locales puedes usar localhost. En Netlify/producción debe ser una URL pública HTTPS.</p>
             </div>
-            <div class="form-grid" style="grid-template-columns:3fr 1fr;margin-bottom:10px">
+            <div class="form-grid" style="grid-template-columns:2fr 1fr 1fr;margin-bottom:10px">
               <label style="display:grid;gap:5px;color:var(--muted);font-size:.78rem;font-weight:800">Términos de búsqueda
                 <input id="li-query" placeholder="ej: Gerente de Ventas Ciudad de Guatemala experiencia retail">
+              </label>
+              <label style="display:grid;gap:5px;color:var(--muted);font-size:.78rem;font-weight:800">Ubicación
+                <input id="li-location" value="Guatemala" placeholder="ej: Guatemala">
               </label>
               <label style="display:grid;gap:5px;color:var(--muted);font-size:.78rem;font-weight:800">Resultados
                 <select id="li-max">
@@ -542,6 +608,22 @@
             <button onclick="guardarConfigEmpresa()">Guardar configuración</button>
           </div>
           <pre id="conf-result"></pre>
+        </article>
+
+        <article class="panel" style="margin-top:16px">
+          <h2>Recepción de CVs por correo <span class="badge-experimental">Experimental</span></h2>
+          <p class="hint">Función experimental en evaluación. Correo Gmail que n8n monitorea para capturar CVs automáticamente. El candidato debe enviar su CV en PDF o Word con el nombre exacto de la plaza en el asunto. El sistema lo cargará como pendiente de análisis IA.</p>
+          <label class="wide-label">Correo de recepción de CVs
+            <input id="conf-email-cv" type="email" placeholder="Ej: cvs@tuempresa.com">
+          </label>
+          <div id="conf-email-cv-preview" style="display:none;margin-top:12px;padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:.88rem;line-height:1.5;color:#166534">
+            <strong>Instrucción para candidatos:</strong><br>
+            Envía tu CV en PDF o Word al correo <strong id="conf-email-cv-valor" style="color:#15803d"></strong> con el nombre de la plaza en el asunto.<br>
+            <span style="color:#6b7280;font-size:.82rem">Ejemplo de asunto: "Desarrollador Backend" o "CV - Analista de RRHH"</span>
+          </div>
+          <div id="conf-email-cv-empty" style="margin-top:10px;padding:12px;background:#fefce8;border:1px solid #fde047;border-radius:10px;font-size:.85rem;color:#713f12">
+            Sin correo configurado — el flujo automático de n8n no procesará correos hasta que se guarde un correo aquí.
+          </div>
         </article>
       </section>
 

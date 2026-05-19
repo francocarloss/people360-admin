@@ -2,15 +2,15 @@
 const SUPA_KEY='sb_publishable_i80iCeD0hfF3P38YlObsJg_runGr68-';
 const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 
-const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],convocatorias:[],candidatos:[],convocatoriaActual:null,resumen:[],sinUso:[],fuera:[],charts:{},encuestas:[]};
+const state={user:null,profile:null,empleados:[],marcajes:[],vacaciones:[],ausencias:[],solicitudes:[],solicitudesReporte:[],solicitudesGestion:[],tiposPerfil:[],ubicaciones:[],capsulas:[],convocatorias:[],candidatos:[],convocatoriaActual:null,resumen:[],sinUso:[],fuera:[],charts:{},encuestas:[],notifSchedules:[]};
 let encPreguntas=[];
 const DEFAULT_PERMISOS={
   empleado:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','mis_solicitudes','encuestas'],consola:[]},
   jefe:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'],consola:[]},
-  rrhh:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','mis_solicitudes','encuestas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas']},
+  rrhh:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','mis_solicitudes','encuestas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas','linkedin','configuracion','perfiles']},
   admin:{app:['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'],consola:['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','perfiles','encuestas','configuracion']}
 };
-const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas','configuracion','perfiles'];
+const CONSOLA_MODULOS=['dashboard','empleados','asistencia','ubicaciones','capsulas','seleccion','solicitudes','notificaciones','reportes','encuestas','linkedin','configuracion','perfiles'];
 const APP_MODULOS=['checkin','datos','ausencias','vacaciones','solicitudes_varias','notificaciones','capsulas','autorizar_vacaciones','mis_solicitudes','encuestas'];
 const NOTIF_TEMPLATES={
   quincena:{
@@ -103,7 +103,7 @@ function showTab(id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.id===id));
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   document.getElementById('page-title').textContent={dashboard:'Dashboard',empleados:'Empleados',asistencia:'Asistencia',ubicaciones:'Ubicaciones',capsulas:'Capsulas',seleccion:'Selección de Personal',solicitudes:'Solicitudes',notificaciones:'Notificaciones',reportes:'Reportes',encuestas:'Encuestas de Clima',configuracion:'Configuración de Empresa',perfiles:'Perfiles',linkedin:'Búsqueda LinkedIn'}[id]||id;
-  if(id==='notificaciones')renderNotifTargets();
+  if(id==='notificaciones'){renderNotifTargets();cargarProgramacionesNotif();}
   if(id==='solicitudes')cargarSolicitudesGestion();
   if(id==='ubicaciones')cargarUbicaciones();
   if(id==='capsulas')cargarCapsulas();
@@ -1264,17 +1264,29 @@ function renderNotifTargets(){
   const scope=document.getElementById('notif-scope')?.value||'todos';
   const areaWrap=document.getElementById('notif-area-wrap');
   const usersWrap=document.getElementById('notif-users-wrap');
-  if(!areaWrap||!usersWrap)return;
-  areaWrap.classList.toggle('hidden',scope!=='departamento');
-  usersWrap.classList.toggle('hidden',scope!=='usuarios');
+  if(areaWrap&&usersWrap){
+    areaWrap.classList.toggle('hidden',scope!=='departamento');
+    usersWrap.classList.toggle('hidden',scope!=='usuarios');
+  }
+  const schedScope=document.getElementById('sched-scope')?.value||'todos';
+  document.getElementById('sched-area-wrap')?.classList.toggle('hidden',schedScope!=='departamento');
+  document.getElementById('sched-users-wrap')?.classList.toggle('hidden',schedScope!=='usuarios');
 
   const areas=[...new Set(state.empleados.map(e=>e.departamento).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  document.getElementById('notif-area').innerHTML=areas.map(a=>`<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  const areasHtml=areas.map(a=>`<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  const notifArea=document.getElementById('notif-area');
+  if(notifArea)notifArea.innerHTML=areasHtml;
+  const schedArea=document.getElementById('sched-area');
+  if(schedArea)schedArea.innerHTML=areasHtml;
 
-  document.getElementById('notif-users').innerHTML=state.empleados
+  const usersHtml=state.empleados
     .filter(e=>e.rol!=='admin')
     .map(e=>`<option value="${e.id}">${escapeHtml(e.nombre_completo||e.email)} - ${escapeHtml(e.departamento||'Sin area')}</option>`)
     .join('');
+  const notifUsers=document.getElementById('notif-users');
+  if(notifUsers)notifUsers.innerHTML=usersHtml;
+  const schedUsers=document.getElementById('sched-users');
+  if(schedUsers)schedUsers.innerHTML=usersHtml;
 }
 
 function limpiarNotificacion(){
@@ -1313,6 +1325,129 @@ async function enviarNotificacion(){
     document.getElementById('notif-result').textContent=error.message;
     toast(error.message);
   }
+}
+
+function renderScheduleFrequency(){
+  const frecuencia=document.getElementById('sched-frecuencia')?.value||'diaria';
+  document.getElementById('sched-interval-wrap')?.classList.toggle('hidden',frecuencia!=='cada_n_dias');
+  document.getElementById('sched-weekdays')?.classList.toggle('hidden',frecuencia!=='semanal');
+}
+
+function formatScheduleFrequency(s){
+  const f=s.frecuencia||'diaria';
+  if(f==='una_vez')return 'Una vez';
+  if(f==='diaria')return 'Diaria';
+  if(f==='cada_n_dias')return `Cada ${s.intervalo_dias||1} dias`;
+  if(f==='mensual')return 'Mensual';
+  if(f==='semanal'){
+    const names=['Dom','Lun','Mar','Mie','Jue','Vie','Sab'];
+    const days=Array.isArray(s.dias_semana)?s.dias_semana.map(d=>names[Number(d)]).filter(Boolean).join(', '):'';
+    return `Semanal${days?`: ${days}`:''}`;
+  }
+  return f;
+}
+
+function formatScope(scope, departamento, userIds=[]){
+  if(scope==='departamento')return `Area: ${departamento||'Sin area'}`;
+  if(scope==='usuarios')return `${Array.isArray(userIds)?userIds.length:0} empleado(s)`;
+  return 'Todos';
+}
+
+async function cargarProgramacionesNotif(){
+  const table=document.getElementById('tabla-notif-schedules');
+  if(!table)return;
+  table.innerHTML='<tr><td>Cargando programaciones...</td></tr>';
+  try{
+    const data=await callFunction('notificaciones-manage',{action:'list_schedules'});
+    state.notifSchedules=data.schedules||[];
+    renderProgramacionesNotif();
+  }catch(error){
+    table.innerHTML=`<tr><td>${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function renderProgramacionesNotif(){
+  const table=document.getElementById('tabla-notif-schedules');
+  if(!table)return;
+  if(!state.notifSchedules.length){
+    table.innerHTML='<tr><td>No hay notificaciones programadas.</td></tr>';
+    return;
+  }
+  table.innerHTML=`<thead><tr>
+    <th>Notificacion</th><th>Destino</th><th>Frecuencia</th><th>Proximo envio</th><th>Estado</th><th>Enviadas</th><th>Acciones</th>
+  </tr></thead><tbody>${state.notifSchedules.map(s=>`<tr>
+    <td><strong>${escapeHtml(s.titulo)}</strong><br><small>${escapeHtml(String(s.mensaje||'').slice(0,90))}</small></td>
+    <td>${escapeHtml(formatScope(s.scope,s.departamento,s.user_ids))}</td>
+    <td>${escapeHtml(formatScheduleFrequency(s))}<br><small>${escapeHtml(String(s.hora||'').slice(0,5))}</small></td>
+    <td>${escapeHtml(String(s.proxima_ejecucion_at||'').replace('T',' ').slice(0,16))}</td>
+    <td class="${s.activa?'ok':'bad'}">${s.activa?'Activa':'Pausada'}</td>
+    <td>${Number(s.ejecuciones||0)}</td>
+    <td><div class="row-actions">
+      <button class="mini secondary" onclick="toggleProgramacionNotif('${s.id}',${!s.activa})">${s.activa?'Pausar':'Activar'}</button>
+      <button class="mini secondary danger" onclick="eliminarProgramacionNotif('${s.id}')">Eliminar</button>
+    </div></td>
+  </tr>`).join('')}</tbody>`;
+}
+
+function limpiarProgramacionNotif(){
+  document.getElementById('sched-titulo').value='';
+  document.getElementById('sched-mensaje').value='';
+  document.getElementById('sched-scope').value='todos';
+  document.getElementById('sched-frecuencia').value='diaria';
+  document.getElementById('sched-intervalo').value='2';
+  document.getElementById('sched-inicio').value=todayISO();
+  document.getElementById('sched-hora').value='08:00';
+  document.getElementById('sched-fin').value='';
+  document.querySelectorAll('#sched-weekdays input').forEach(i=>i.checked=false);
+  document.getElementById('sched-result').textContent='';
+  renderNotifTargets();
+  renderScheduleFrequency();
+}
+
+async function crearProgramacionNotif(){
+  const titulo=document.getElementById('sched-titulo').value.trim();
+  const mensaje=document.getElementById('sched-mensaje').value.trim();
+  const scope=document.getElementById('sched-scope').value;
+  const departamento=document.getElementById('sched-area').value;
+  const user_ids=[...document.getElementById('sched-users').selectedOptions].map(o=>o.value);
+  const frecuencia=document.getElementById('sched-frecuencia').value;
+  const intervalo_dias=parseInt(document.getElementById('sched-intervalo').value)||1;
+  const dias_semana=[...document.querySelectorAll('#sched-weekdays input:checked')].map(i=>Number(i.value));
+  const empieza_en=document.getElementById('sched-inicio').value||todayISO();
+  const termina_en=document.getElementById('sched-fin').value||null;
+  const hora=document.getElementById('sched-hora').value||'08:00';
+  if(!titulo){toast('Ingresa el titulo de la programacion');return}
+  if(!mensaje){toast('Ingresa el mensaje de la programacion');return}
+  if(frecuencia==='semanal'&&!dias_semana.length){toast('Selecciona al menos un dia de la semana');return}
+  document.getElementById('sched-result').textContent='Guardando programacion...';
+  try{
+    await callFunction('notificaciones-manage',{action:'create_schedule',titulo,mensaje,scope,departamento,user_ids,frecuencia,intervalo_dias,dias_semana,empieza_en,termina_en,hora});
+    toast('Programacion guardada');
+    limpiarProgramacionNotif();
+    document.getElementById('sched-result').textContent='Programacion guardada correctamente.';
+    await cargarProgramacionesNotif();
+  }catch(error){
+    document.getElementById('sched-result').textContent=error.message;
+    toast(error.message);
+  }
+}
+
+async function toggleProgramacionNotif(id,activa){
+  const schedule=state.notifSchedules.find(s=>String(s.id)===String(id))||{};
+  try{
+    await callFunction('notificaciones-manage',{action:'toggle_schedule',id,activa,...schedule});
+    toast(activa?'Programacion activada':'Programacion pausada');
+    await cargarProgramacionesNotif();
+  }catch(error){toast(error.message)}
+}
+
+async function eliminarProgramacionNotif(id){
+  if(!confirm('Eliminar esta programacion de notificaciones?'))return;
+  try{
+    await callFunction('notificaciones-manage',{action:'delete_schedule',id});
+    toast('Programacion eliminada');
+    await cargarProgramacionesNotif();
+  }catch(error){toast(error.message)}
 }
 
 // ── ENCUESTAS DE CLIMA ───────────────────────────────────────────────────────
@@ -1536,6 +1671,22 @@ async function cargarConfigEmpresa(){
       document.getElementById('conf-logo-img').src=data.logo_url;
       document.getElementById('conf-logo-preview').style.display='block';
     }
+    actualizarPreviewEmailCv(data.email_recepcion_cv||'');
+    document.getElementById('conf-email-cv').value=data.email_recepcion_cv||'';
+  }
+}
+
+function actualizarPreviewEmailCv(email){
+  const preview=document.getElementById('conf-email-cv-preview');
+  const empty=document.getElementById('conf-email-cv-empty');
+  const valor=document.getElementById('conf-email-cv-valor');
+  if(email){
+    preview.style.display='block';
+    empty.style.display='none';
+    valor.textContent=email;
+  } else {
+    preview.style.display='none';
+    empty.style.display='block';
   }
 }
 
@@ -1560,7 +1711,8 @@ async function guardarConfigEmpresa(){
     document.getElementById('conf-logo-img').src=publicUrl;
     document.getElementById('conf-logo-preview').style.display='block';
   }
-  const patch={nombre_empresa,color_primario,color_secundario,foto_marcaje_activa,updated_at:new Date().toISOString()};
+  const email_recepcion_cv=document.getElementById('conf-email-cv').value.trim()||null;
+  const patch={nombre_empresa,color_primario,color_secundario,foto_marcaje_activa,email_recepcion_cv,updated_at:new Date().toISOString()};
   if(logo_url)patch.logo_url=logo_url;
   const {error}=id
     ?await sb.from('configuracion_empresa').update(patch).eq('id',id)
@@ -1590,6 +1742,10 @@ function mostrarTabLinkedIn(){
   const webhookInput=document.getElementById('li-webhook');
   if(webhookInput&&!webhookInput.value){
     webhookInput.value=localStorage.getItem('people360-linkedin-webhook')||LINKEDIN_WEBHOOK_DEFAULT;
+  }
+  const locationInput=document.getElementById('li-location');
+  if(locationInput){
+    locationInput.value=localStorage.getItem('people360-linkedin-location')||locationInput.value||'Guatemala';
   }
   if(sel){
     const prev=sel.value;
@@ -1636,7 +1792,7 @@ function cleanLinkedInUrl(raw){
   try{
     const url=new URL(value);
     const host=url.hostname.toLowerCase();
-    if(host.includes('linkedin.com'))return url.href;
+    if(host.includes('linkedin.com')&&url.pathname.includes('/in/'))return url.href;
     if(host==='translate.google.com'){
       const wrapped=url.searchParams.get('u')||url.searchParams.get('url');
       if(wrapped)return cleanLinkedInUrl(wrapped);
@@ -1648,12 +1804,20 @@ function cleanLinkedInUrl(raw){
 }
 
 function linkedInSearchUrl(prospecto){
+  const nombre=String(prospecto?.nombre||'').split(/[-|,]/)[0].trim();
+  const empresa=String(prospecto?.empresa_actual||'').trim();
+  const ubicacion=(document.getElementById('li-location')?.value||'').trim();
+  const cargo=String(prospecto?.titulo_actual||'')
+    .replace(/\b(CDO|CIO|CEO|CFO|CTO|VP|Vicepresidenta?|Vice President)\b/gi,'')
+    .replace(/[\/|,]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
   const q=[
-    prospecto?.nombre,
-    prospecto?.titulo_actual,
-    prospecto?.empresa_actual,
-    'LinkedIn'
-  ].filter(Boolean).join(' ');
+    nombre,
+    ubicacion,
+    empresa,
+    cargo
+  ].filter(Boolean).join(' ').slice(0,120);
   return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
 }
 
@@ -1662,6 +1826,8 @@ async function buscarEnLinkedIn(){
   if(!actual){toast('Selecciona una plaza primero');return;}
   const query=document.getElementById('li-query').value.trim();
   if(!query){toast('Ingresa los términos de búsqueda');return;}
+  const ubicacion=(document.getElementById('li-location')?.value||'Guatemala').trim();
+  if(ubicacion)localStorage.setItem('people360-linkedin-location',ubicacion);
   const max=parseInt(document.getElementById('li-max').value)||5;
   const status=document.getElementById('li-status');
   const ct=document.getElementById('li-results');
@@ -1673,7 +1839,7 @@ async function buscarEnLinkedIn(){
     const res=await fetch(webhookUrl,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({convocatoria_id:actual.id,query,requisitos:actual.requisitos||'',max_results:max})
+      body:JSON.stringify({convocatoria_id:actual.id,query,ubicacion,requisitos:actual.requisitos||'',max_results:max})
     });
     if(!res.ok)throw new Error('No se pudo conectar con n8n ('+res.status+')');
   }catch(e){
@@ -1765,6 +1931,9 @@ async function limpiarProspectos(){
 }
 
 window.addEventListener('DOMContentLoaded',async()=>{
+  const schedInicio=document.getElementById('sched-inicio');
+  if(schedInicio&&!schedInicio.value)schedInicio.value=todayISO();
+  renderScheduleFrequency();
   const {data:{session}}=await sb.auth.getSession();
   if(session){
     const savedRaw=sessionStorage.getItem('people360-tab');
